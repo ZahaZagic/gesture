@@ -1,0 +1,8 @@
+opencv-python>=4.5.0
+mediapipe>=0.10.0
+numpy<2.0.0
+pyautogui
+pynput
+scipy
+reportlab
+pyyaml

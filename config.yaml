@@ -1,0 +1,44 @@
+# General Configuration
+camera_id: 0
+width: 1280
+height: 720
+fps_target: 30
+
+# Module 1: Posture Analysis
+posture:
+  enable_3d_view: true
+  min_detection_confidence: 0.5
+  min_tracking_confidence: 0.5
+  
+  # Thresholds (degrees)
+  thresholds:
+    shoulder_slope_warning: 3.0
+    shoulder_slope_critical: 6.0
+    head_tilt_warning: 5.0
+    head_tilt_critical: 10.0
+    forward_head_warning: 10.0
+    forward_head_critical: 20.0
+    kyphosis_warning: 15.0
+    kyphosis_critical: 25.0
+  
+  # Guidance Bubble Colors (BGR)
+  colors:
+    normal: [0, 255, 0]    # Green
+    warning: [0, 255, 255] # Yellow
+    critical: [0, 0, 255]  # Red
+
+# Module 2: Gesture Air Mouse
+gesture:
+  min_detection_confidence: 0.7
+  min_tracking_confidence: 0.5
+  
+  # Mouse Control
+  sensitivity: 0.75
+  smoothing_factor: 0.5  # For EMA: 0.0 (max smoothing) to 1.0 (no smoothing)
+  min_movement_threshold: 3
+  
+  # Action Thresholds
+  pinch_distance_threshold: 0.05  # Normalized distance
+  drag_hold_frames: 6
+  scroll_speed: 10
+  scroll_mode: "vertical_hand_motion"
