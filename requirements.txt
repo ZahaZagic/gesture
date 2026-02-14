@@ -6,3 +6,5 @@ pynput
 scipy
 reportlab
 pyyaml
+openvino>=2023.0.0
+openvino-dev>=2023.0.0

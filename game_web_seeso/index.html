@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SpaceRocks - SeeSo Eye Control</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Load SeeSo SDK from CDN as Module -->
+    <!-- Load EyeDid SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/eyedid@latest/dist/eyedid.dist.min.js"></script>
+    <script>
+        // Polyfill or just wait for it to load
+        console.log("EyeDid Script Tag Added");
+    </script>
+    <style>
+        #debug-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 50%;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.7);
+            color: lime;
+            font-family: monospace;
+            overflow-y: auto;
+            pointer-events: none;
+            z-index: 9999;
+            padding: 10px;
+            font-size: 12px;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="debug-overlay">Waiting for logs...</div>
+    <div id="loading">Initializing SeeSo... Please allow Camera access.</div>
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        <div id="ui-layer">
+            <div id="score">Score: 0</div>
+            <button id="btn-calibrate">Calibrate (C)</button>
+            <div id="status">Loading...</div>
+        </div>
+        <!-- Calibration Video Element (usually handled by SDK but we might need a container) -->
+    </div>
+
+    <script src="game.js"></script>
+</body>
+
+</html>
