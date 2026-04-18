@@ -1,0 +1,431 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		57131DBD2F726F8B008B9863 /* HighwayScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57131DBC2F726F8B008B9863 /* HighwayScene.swift */; };
+		57131DBF2F726FC0008B9863 /* ColorExtensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57131DBE2F726FC0008B9863 /* ColorExtensions.swift */; };
+		5750E6222F5D07EF0058A649 /* Spacefall_iosApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5750E6212F5D07EF0058A649 /* Spacefall_iosApp.swift */; };
+		5750E6282F5D07F00058A649 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 5750E6272F5D07F00058A649 /* Assets.xcassets */; };
+		5750E6432F5D0EB40058A649 /* MainMenuView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5750E6422F5D0EB40058A649 /* MainMenuView.swift */; };
+		5750E6482F5D0EB70058A649 /* AvoidanceScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5750E6452F5D0EB70058A649 /* AvoidanceScene.swift */; };
+		5750E6492F5D0EB70058A649 /* TargetScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5750E6462F5D0EB70058A649 /* TargetScene.swift */; };
+		5750E64A2F5D0EB70058A649 /* BaseEpisodeScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5750E6472F5D0EB70058A649 /* BaseEpisodeScene.swift */; };
+		5750E64B2F5D0EB70058A649 /* DragonScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5750E6442F5D0EB70058A649 /* DragonScene.swift */; };
+		5750E64F2F5D0EC30058A649 /* SoundManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5750E64D2F5D0EC30058A649 /* SoundManager.swift */; };
+		5750E6502F5D0EC30058A649 /* GazeEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5750E64C2F5D0EC30058A649 /* GazeEngine.swift */; };
+		5750E6512F5D0EC30058A649 /* GestureManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5750E64E2F5D0EC30058A649 /* GestureManager.swift */; };
+		5750E6532F5D0EC70058A649 /* EpisodeConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5750E6522F5D0EC70058A649 /* EpisodeConfig.swift */; };
+		5750E65C2F5FD8BD0058A649 /* ep2 in Resources */ = {isa = PBXBuildFile; fileRef = 5750E6562F5FD8BC0058A649 /* ep2 */; };
+		5750E65D2F5FD8BD0058A649 /* ep3 in Resources */ = {isa = PBXBuildFile; fileRef = 5750E6572F5FD8BC0058A649 /* ep3 */; };
+		5750E65E2F5FD8BD0058A649 /* ep1 in Resources */ = {isa = PBXBuildFile; fileRef = 5750E6582F5FD8BD0058A649 /* ep1 */; };
+		5750E65F2F5FD8BD0058A649 /* ep5 in Resources */ = {isa = PBXBuildFile; fileRef = 5750E6592F5FD8BD0058A649 /* ep5 */; };
+		5750E6602F5FD8BD0058A649 /* ep4 in Resources */ = {isa = PBXBuildFile; fileRef = 5750E65A2F5FD8BD0058A649 /* ep4 */; };
+		5750E6612F5FD8BD0058A649 /* ep6 in Resources */ = {isa = PBXBuildFile; fileRef = 5750E65B2F5FD8BD0058A649 /* ep6 */; };
+		57A111112F8000010058A649 /* music in Resources */ = {isa = PBXBuildFile; fileRef = 57A111102F8000010058A649 /* music */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		57131DBC2F726F8B008B9863 /* HighwayScene.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = HighwayScene.swift; sourceTree = "<group>"; };
+		57131DBE2F726FC0008B9863 /* ColorExtensions.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ColorExtensions.swift; sourceTree = "<group>"; };
+		5750E61E2F5D07EF0058A649 /* Spacefall_ios.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Spacefall_ios.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5750E6212F5D07EF0058A649 /* Spacefall_iosApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Spacefall_iosApp.swift; sourceTree = "<group>"; };
+		5750E6272F5D07F00058A649 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		5750E62A2F5D07F00058A649 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
+		5750E6312F5D08440058A649 /* UI */ = {isa = PBXFileReference; lastKnownFileType = folder; name = UI; path = Spacefall_ios/UI; sourceTree = SOURCE_ROOT; };
+		5750E6322F5D08440058A649 /* Core */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Core; path = Spacefall_ios/Core; sourceTree = SOURCE_ROOT; };
+		5750E6332F5D08440058A649 /* Sounds */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Sounds; path = Spacefall_ios/Sounds; sourceTree = SOURCE_ROOT; };
+		5750E6342F5D08440058A649 /* Scenes */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Scenes; path = Spacefall_ios/Scenes; sourceTree = SOURCE_ROOT; };
+		5750E6392F5D0CCD0058A649 /* Models */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Models; sourceTree = SOURCE_ROOT; };
+		5750E6422F5D0EB40058A649 /* MainMenuView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainMenuView.swift; sourceTree = "<group>"; };
+		5750E6442F5D0EB70058A649 /* DragonScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DragonScene.swift; sourceTree = "<group>"; };
+		5750E6452F5D0EB70058A649 /* AvoidanceScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvoidanceScene.swift; sourceTree = "<group>"; };
+		5750E6462F5D0EB70058A649 /* TargetScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TargetScene.swift; sourceTree = "<group>"; };
+		5750E6472F5D0EB70058A649 /* BaseEpisodeScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BaseEpisodeScene.swift; sourceTree = "<group>"; };
+		5750E64C2F5D0EC30058A649 /* GazeEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GazeEngine.swift; sourceTree = "<group>"; };
+		5750E64D2F5D0EC30058A649 /* SoundManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoundManager.swift; sourceTree = "<group>"; };
+		5750E64E2F5D0EC30058A649 /* GestureManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GestureManager.swift; sourceTree = "<group>"; };
+		5750E6522F5D0EC70058A649 /* EpisodeConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EpisodeConfig.swift; sourceTree = "<group>"; };
+		5750E6562F5FD8BC0058A649 /* ep2 */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ep2; path = Assets.xcassets/ep2; sourceTree = "<group>"; };
+		5750E6572F5FD8BC0058A649 /* ep3 */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ep3; path = Assets.xcassets/ep3; sourceTree = "<group>"; };
+		5750E6582F5FD8BD0058A649 /* ep1 */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ep1; path = Assets.xcassets/ep1; sourceTree = "<group>"; };
+		5750E6592F5FD8BD0058A649 /* ep5 */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ep5; path = Assets.xcassets/ep5; sourceTree = "<group>"; };
+		5750E65A2F5FD8BD0058A649 /* ep4 */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ep4; path = Assets.xcassets/ep4; sourceTree = "<group>"; };
+		5750E65B2F5FD8BD0058A649 /* ep6 */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ep6; path = Assets.xcassets/ep6; sourceTree = "<group>"; };
+		57A111102F8000010058A649 /* music */ = {isa = PBXFileReference; lastKnownFileType = folder; name = music; path = Assets.xcassets/music; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		5750E61B2F5D07EF0058A649 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		5750E6152F5D07EE0058A649 = {
+			isa = PBXGroup;
+			children = (
+				5750E6202F5D07EF0058A649 /* Spacefall_ios */,
+				5750E61F2F5D07EF0058A649 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		5750E61F2F5D07EF0058A649 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				5750E61E2F5D07EF0058A649 /* Spacefall_ios.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		5750E6202F5D07EF0058A649 /* Spacefall_ios */ = {
+			isa = PBXGroup;
+			children = (
+				5750E6582F5FD8BD0058A649 /* ep1 */,
+				5750E6562F5FD8BC0058A649 /* ep2 */,
+				5750E6572F5FD8BC0058A649 /* ep3 */,
+				5750E65A2F5FD8BD0058A649 /* ep4 */,
+				5750E6592F5FD8BD0058A649 /* ep5 */,
+				5750E65B2F5FD8BD0058A649 /* ep6 */,
+				57A111102F8000010058A649 /* music */,
+				5750E6392F5D0CCD0058A649 /* Models */,
+				5750E6322F5D08440058A649 /* Core */,
+				5750E6342F5D08440058A649 /* Scenes */,
+				5750E6332F5D08440058A649 /* Sounds */,
+				5750E6312F5D08440058A649 /* UI */,
+				5750E6212F5D07EF0058A649 /* Spacefall_iosApp.swift */,
+				5750E6422F5D0EB40058A649 /* MainMenuView.swift */,
+				5750E6452F5D0EB70058A649 /* AvoidanceScene.swift */,
+				5750E6472F5D0EB70058A649 /* BaseEpisodeScene.swift */,
+				57131DBC2F726F8B008B9863 /* HighwayScene.swift */,
+				5750E6442F5D0EB70058A649 /* DragonScene.swift */,
+				5750E6462F5D0EB70058A649 /* TargetScene.swift */,
+				5750E64C2F5D0EC30058A649 /* GazeEngine.swift */,
+				57131DBE2F726FC0008B9863 /* ColorExtensions.swift */,
+				5750E64E2F5D0EC30058A649 /* GestureManager.swift */,
+				5750E64D2F5D0EC30058A649 /* SoundManager.swift */,
+				5750E6522F5D0EC70058A649 /* EpisodeConfig.swift */,
+				5750E6272F5D07F00058A649 /* Assets.xcassets */,
+				5750E6292F5D07F00058A649 /* Preview Content */,
+			);
+			path = Spacefall_ios;
+			sourceTree = "<group>";
+		};
+		5750E6292F5D07F00058A649 /* Preview Content */ = {
+			isa = PBXGroup;
+			children = (
+				5750E62A2F5D07F00058A649 /* Preview Assets.xcassets */,
+			);
+			path = "Preview Content";
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		5750E61D2F5D07EF0058A649 /* Spacefall_ios */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5750E62E2F5D07F00058A649 /* Build configuration list for PBXNativeTarget "Spacefall_ios" */;
+			buildPhases = (
+				5750E61A2F5D07EF0058A649 /* Sources */,
+				5750E61B2F5D07EF0058A649 /* Frameworks */,
+				5750E61C2F5D07EF0058A649 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Spacefall_ios;
+			productName = Spacefall_ios;
+			productReference = 5750E61E2F5D07EF0058A649 /* Spacefall_ios.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		5750E6162F5D07EE0058A649 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1540;
+				LastUpgradeCheck = 1540;
+				TargetAttributes = {
+					5750E61D2F5D07EF0058A649 = {
+						CreatedOnToolsVersion = 15.4;
+					};
+				};
+			};
+			buildConfigurationList = 5750E6192F5D07EE0058A649 /* Build configuration list for PBXProject "Spacefall_ios" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 5750E6152F5D07EE0058A649;
+			productRefGroup = 5750E61F2F5D07EF0058A649 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				5750E61D2F5D07EF0058A649 /* Spacefall_ios */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		5750E61C2F5D07EF0058A649 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5750E6612F5FD8BD0058A649 /* ep6 in Resources */,
+				5750E65C2F5FD8BD0058A649 /* ep2 in Resources */,
+				5750E65D2F5FD8BD0058A649 /* ep3 in Resources */,
+				57A111112F8000010058A649 /* music in Resources */,
+				5750E6602F5FD8BD0058A649 /* ep4 in Resources */,
+				5750E6282F5D07F00058A649 /* Assets.xcassets in Resources */,
+				5750E65F2F5FD8BD0058A649 /* ep5 in Resources */,
+				5750E65E2F5FD8BD0058A649 /* ep1 in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		5750E61A2F5D07EF0058A649 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5750E6502F5D0EC30058A649 /* GazeEngine.swift in Sources */,
+				5750E6492F5D0EB70058A649 /* TargetScene.swift in Sources */,
+				5750E64A2F5D0EB70058A649 /* BaseEpisodeScene.swift in Sources */,
+				5750E6432F5D0EB40058A649 /* MainMenuView.swift in Sources */,
+				5750E64F2F5D0EC30058A649 /* SoundManager.swift in Sources */,
+				5750E64B2F5D0EB70058A649 /* DragonScene.swift in Sources */,
+				5750E6532F5D0EC70058A649 /* EpisodeConfig.swift in Sources */,
+				57131DBD2F726F8B008B9863 /* HighwayScene.swift in Sources */,
+				5750E6512F5D0EC30058A649 /* GestureManager.swift in Sources */,
+				5750E6222F5D07EF0058A649 /* Spacefall_iosApp.swift in Sources */,
+				5750E6482F5D0EB70058A649 /* AvoidanceScene.swift in Sources */,
+				57131DBF2F726FC0008B9863 /* ColorExtensions.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		5750E62C2F5D07F00058A649 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.5;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		5750E62D2F5D07F00058A649 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.5;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		5750E62F2F5D07F00058A649 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "\"Spacefall_ios/Preview Content\"";
+				DEVELOPMENT_TEAM = GCNJB6UTAT;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "The camera is used for eye-tracking gameplay.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.5;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.ZahaZagic.Spacefall-ios";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		5750E6302F5D07F00058A649 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "\"Spacefall_ios/Preview Content\"";
+				DEVELOPMENT_TEAM = GCNJB6UTAT;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "The camera is used for eye-tracking gameplay.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.5;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.ZahaZagic.Spacefall-ios";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		5750E6192F5D07EE0058A649 /* Build configuration list for PBXProject "Spacefall_ios" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5750E62C2F5D07F00058A649 /* Debug */,
+				5750E62D2F5D07F00058A649 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		5750E62E2F5D07F00058A649 /* Build configuration list for PBXNativeTarget "Spacefall_ios" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5750E62F2F5D07F00058A649 /* Debug */,
+				5750E6302F5D07F00058A649 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 5750E6162F5D07EE0058A649 /* Project object */;
+}
