@@ -28,7 +28,7 @@ class OverlayRenderer:
                 connection_drawing_spec=self.mp_drawing.DrawingSpec(color=(255,255,255), thickness=1)
             )
 
-    def draw_metrics(self, image, metrics, guidelines=True):
+    def draw_metrics(self, image, metrics, guidelines=True, assessment=None):
         """
         Draws calculated metrics and guidelines on the image.
         metrics: dict containing 'shoulder_slope', 'head_tilt', etc.
@@ -41,11 +41,37 @@ class OverlayRenderer:
         line_height = 25
         
         # Background box for text
-        cv2.rectangle(image, (0, 0), (250, 150), (0, 0, 0), -1)
-        cv2.addWeighted(image[0:150, 0:250], 0.7, image[0:150, 0:250], 0.3, 0) # Transparent-ish
+        cv2.rectangle(image, (0, 0), (430, 230), (0, 0, 0), -1)
+        cv2.addWeighted(image[0:230, 0:430], 0.7, image[0:230, 0:430], 0.3, 0)
+
+        if assessment:
+            status = assessment.get("status", "unknown").replace("_", " ").title()
+            if assessment.get("calibrating"):
+                status = "Calibrating"
+            status_color = self.colors["normal"]
+            if assessment.get("status") == "warning":
+                status_color = self.colors["warning"]
+            elif assessment.get("status") == "critical":
+                status_color = self.colors["critical"]
+            cv2.putText(image, f"Status: {status}", (x_offset, y_offset),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, status_color, 2, cv2.LINE_AA)
+            y_offset += line_height
         
-        for key, value in metrics.items():
+        visible_metrics = (
+            "shoulder_slope",
+            "head_tilt",
+            "head_lateral_offset_norm",
+            "forward_head_angle",
+            "forward_head_offset_norm",
+            "landmark_min_visibility",
+        )
+        for key in visible_metrics:
+            value = metrics.get(key)
+            if value is None:
+                continue
             text = f"{key.replace('_', ' ').title()}: {value:.1f}"
+            if "offset" in key or "visibility" in key:
+                text = f"{key.replace('_', ' ').title()}: {value:.2f}"
             color = self.colors['normal']
             
             # Simple threshold check for coloring text (hardcoded defaults if config missing)

@@ -16,10 +16,26 @@ posture:
     shoulder_slope_critical: 6.0
     head_tilt_warning: 5.0
     head_tilt_critical: 10.0
+    head_lateral_offset_warning: 0.08
+    head_lateral_offset_critical: 0.14
     forward_head_warning: 10.0
     forward_head_critical: 20.0
+    forward_head_offset_warning: 0.08
+    forward_head_offset_critical: 0.16
     kyphosis_warning: 15.0
     kyphosis_critical: 25.0
+
+  # Production controls
+  quality_min_visibility: 0.55
+  smoothing_window: 12
+  calibration_seconds: 3.0
+  sustain_seconds: 2.0
+
+  # Background alerts. For Windows toast popups, optionally install win10toast.
+  notifications:
+    enabled: true
+    sound: true
+    cooldown_seconds: 60.0
   
   # Guidance Bubble Colors (BGR)
   colors:
