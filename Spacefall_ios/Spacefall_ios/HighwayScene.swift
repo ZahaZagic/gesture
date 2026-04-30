@@ -12,6 +12,7 @@ class HighwayScene: BaseEpisodeScene {
     private var gameStartTime: TimeInterval = 0
     private var lastDifficultyCheck: TimeInterval = 0
     private var difficultyLevel = 1
+    private let minimumVehicleGap: CGFloat = 210
     
     override func didMove(to view: SKView) {
         laneWidth = size.width / CGFloat(numLanes)
@@ -64,18 +65,21 @@ class HighwayScene: BaseEpisodeScene {
         
         for i in 0..<vehiclesToSpawn {
             var lane = Int.random(in: 0..<numLanes)
+            let spawnY = size.height + 100 + CGFloat(i) * 150.0
             
             // Traffic spacing: 
             // 1. No parallel vehicles (usedLanes)
             // 2. No adjacent lanes simultaneously (lane-1, lane+1)
             // 3. Time-staggered spacing
+            // 4. Real on-road spacing against vehicles already moving or changing lanes
             let now = CACurrentMediaTime()
             var attempts = 0
             while attempts < 15 {
                 let isAdjacent = usedLanes.contains(lane-1) || usedLanes.contains(lane+1)
                 let recentlyUsed = (lastLaneSpawnTimes[lane] ?? 0) > now - 1.2 // Increased gap
+                let roadSpaceAvailable = isVehicleLaneSafe(lane, near: spawnY, extraGap: 80)
                 
-                if !usedLanes.contains(lane) && !isAdjacent && !recentlyUsed {
+                if !usedLanes.contains(lane) && !isAdjacent && !recentlyUsed && roadSpaceAvailable {
                     break // Found a good lane
                 }
                 lane = Int.random(in: 0..<numLanes)
@@ -98,8 +102,7 @@ class HighwayScene: BaseEpisodeScene {
             vehicle.size = CGSize(width: vWidth, height: vHeight)
             vehicle.zRotation = .pi
             // Scatter around: slight Y offset for each vehicle in the wave
-            let yOffset = CGFloat(i) * 150.0 
-            vehicle.position = CGPoint(x: CGFloat(lane) * laneWidth + laneWidth/2, y: size.height + 100 + yOffset)
+            vehicle.position = CGPoint(x: CGFloat(lane) * laneWidth + laneWidth/2, y: spawnY)
             vehicle.name = isElectric ? "electric" : (isTruck ? "truck" : "small")
             vehicle.userData = ["lane": lane]
             addChild(vehicle)
@@ -190,6 +193,7 @@ class HighwayScene: BaseEpisodeScene {
         
         updateRewardPersistence()
         updateRoadScroll()
+        resolveVehicleSpacing()
         
         // Handle Electric Dash (if applicable) or other active effects
         
@@ -293,15 +297,37 @@ class HighwayScene: BaseEpisodeScene {
         }
     }
 
-    private func isVehicleLaneSafe(_ lane: Int, near y: CGFloat, excluding ignored: SKNode) -> Bool {
+    private func isTrafficVehicle(_ node: SKNode) -> Bool {
+        node.name == "small" || node.name == "truck" || node.name == "electric"
+    }
+
+    private func occupiedTrafficLanes(for node: SKNode) -> Set<Int> {
+        var lanes = Set<Int>()
+        if let lane = node.userData?["lane"] as? Int, (0..<numLanes).contains(lane) {
+            lanes.insert(lane)
+        }
+        if let targetLane = node.userData?["targetLane"] as? Int, (0..<numLanes).contains(targetLane) {
+            lanes.insert(targetLane)
+        }
+
+        let visualLane = Int(round((node.position.x - laneWidth / 2) / laneWidth))
+        if (0..<numLanes).contains(visualLane) {
+            lanes.insert(visualLane)
+        }
+        return lanes
+    }
+
+    private func requiredVehicleGap(between first: SKNode, and second: SKNode) -> CGFloat {
+        max(minimumVehicleGap, (first.frame.height + second.frame.height) / 2 + 80)
+    }
+
+    private func isVehicleLaneSafe(_ lane: Int, near y: CGFloat, excluding ignored: SKNode? = nil, extraGap: CGFloat = 0) -> Bool {
         guard (0..<numLanes).contains(lane) else { return false }
         let laneCenter = CGFloat(lane) * laneWidth + laneWidth / 2
         for node in children {
-            guard node !== ignored,
-                  node.name == "small" || node.name == "truck" || node.name == "electric" else { continue }
-            let reservedLane = node.userData?["targetLane"] as? Int
-            let sameLane = abs(node.position.x - laneCenter) < laneWidth * 0.42 || reservedLane == lane
-            let closeY = abs(node.position.y - y) < 150
+            guard node !== ignored, isTrafficVehicle(node) else { continue }
+            let sameLane = occupiedTrafficLanes(for: node).contains(lane) || abs(node.position.x - laneCenter) < laneWidth * 0.48
+            let closeY = abs(node.position.y - y) < minimumVehicleGap + extraGap
             if sameLane && closeY {
                 return false
             }
@@ -309,10 +335,34 @@ class HighwayScene: BaseEpisodeScene {
         return true
     }
 
+    private func resolveVehicleSpacing() {
+        let vehicles = children.filter { isTrafficVehicle($0) }
+        guard vehicles.count > 1 else { return }
+
+        for lane in 0..<numLanes {
+            let laneVehicles = vehicles
+                .filter { occupiedTrafficLanes(for: $0).contains(lane) }
+                .sorted { $0.position.y < $1.position.y }
+
+            guard laneVehicles.count > 1 else { continue }
+
+            for index in 1..<laneVehicles.count {
+                let frontVehicle = laneVehicles[index - 1]
+                let trailingVehicle = laneVehicles[index]
+                let minGap = requiredVehicleGap(between: frontVehicle, and: trailingVehicle)
+                let currentGap = trailingVehicle.position.y - frontVehicle.position.y
+
+                if currentGap < minGap {
+                    trailingVehicle.position.y = frontVehicle.position.y + minGap
+                }
+            }
+        }
+    }
+
     private func performVehicleDodge(_ vehicle: SKNode, to lane: Int) {
         let clampedLane = min(max(lane, 0), numLanes - 1)
         let targetX = CGFloat(clampedLane) * laneWidth + laneWidth / 2
-        guard isVehicleLaneSafe(clampedLane, near: vehicle.position.y, excluding: vehicle) else { return }
+        guard isVehicleLaneSafe(clampedLane, near: vehicle.position.y, excluding: vehicle, extraGap: 35) else { return }
         vehicle.userData?["lane"] = clampedLane
         vehicle.userData?["targetLane"] = clampedLane
         let direction: CGFloat = targetX > vehicle.position.x ? -1 : 1

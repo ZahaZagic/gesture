@@ -77,6 +77,28 @@ class SpineKyphosis:
             return None
         return float((ear_world[2] - shoulder_world[2]) / shoulder_width_world)
 
+    def get_forward_head_projection(self, ear, shoulder_mid, shoulder_width):
+        """
+        Estimates how far the head drifts in front of the shoulder stack in 2D.
+
+        In a mirrored webcam view, an upright head usually keeps the ear line
+        close to the shoulder midpoint. When the head leans forward, the ear line
+        tends to drift away from that stack, especially with a slight side angle.
+        """
+        if shoulder_width <= 1e-6:
+            return 0.0
+        return float((ear[0] - shoulder_mid[0]) / shoulder_width)
+
+    def get_neck_compaction(self, ear, shoulder_mid, shoulder_width):
+        """
+        Normalized vertical ear-to-shoulder distance.
+
+        Smaller values often indicate a collapsed neck or shrugged/forward-head posture.
+        """
+        if shoulder_width <= 1e-6:
+            return 0.0
+        return float((shoulder_mid[1] - ear[1]) / shoulder_width)
+
     def landmark_quality(self, landmarks):
         values = []
         for idx in self.required_landmarks:
@@ -155,6 +177,8 @@ class SpineKyphosis:
         avg_shoulder = shoulder_mid
         avg_ear = [(l_ear[0] + r_ear[0]) / 2, (l_ear[1] + r_ear[1]) / 2]
         forward_head_angle = self.get_forward_head_angle(avg_ear, avg_shoulder)
+        forward_head_projection_norm = self.get_forward_head_projection(avg_ear, shoulder_mid, shoulder_width)
+        neck_compaction_norm = self.get_neck_compaction(avg_ear, shoulder_mid, shoulder_width)
 
         eye_width = float(np.linalg.norm(np.array(l_eye) - np.array(r_eye)))
         ear_width = float(np.linalg.norm(np.array(l_ear) - np.array(r_ear)))
@@ -188,6 +212,8 @@ class SpineKyphosis:
             "head_lateral_offset_norm": self.get_lateral_head_offset(nose, shoulder_mid, shoulder_width),
             "forward_head_angle": forward_head_angle,
             "forward_head_offset_norm": forward_head_offset,
+            "forward_head_projection_norm": forward_head_projection_norm,
+            "neck_compaction_norm": neck_compaction_norm,
             "face_yaw_proxy": face_yaw_proxy,
             "landmark_min_visibility": min_visibility,
             "landmark_avg_visibility": avg_visibility

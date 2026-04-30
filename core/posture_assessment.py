@@ -50,7 +50,14 @@ class PostureAssessment:
     def _update_baseline(self, metrics):
         if time.monotonic() - self.started_at > self.calibration_seconds:
             if not self.baseline and self.baseline_samples:
-                keys = ("forward_head_angle", "forward_head_offset_norm", "head_lateral_offset_norm")
+                keys = (
+                    "forward_head_angle",
+                    "forward_head_offset_norm",
+                    "head_lateral_offset_norm",
+                    "forward_head_projection_norm",
+                    "neck_compaction_norm",
+                    "shoulder_height_delta_norm",
+                )
                 for key in keys:
                     vals = [sample[key] for sample in self.baseline_samples if sample.get(key) is not None]
                     if vals:
@@ -86,6 +93,9 @@ class PostureAssessment:
         enriched["forward_head_angle_deviation"] = self._deviation(smoothed, "forward_head_angle")
         enriched["forward_head_offset_deviation"] = self._deviation(smoothed, "forward_head_offset_norm")
         enriched["head_lateral_offset_deviation"] = self._deviation(smoothed, "head_lateral_offset_norm")
+        enriched["forward_head_projection_deviation"] = self._deviation(smoothed, "forward_head_projection_norm")
+        enriched["neck_compaction_deviation"] = self._deviation(smoothed, "neck_compaction_norm")
+        enriched["shoulder_height_delta_deviation"] = self._deviation(smoothed, "shoulder_height_delta_norm")
 
         if not quality_ok:
             self.bad_since = None
@@ -124,13 +134,22 @@ class PostureAssessment:
         issues = []
 
         shoulder_abs = abs(metrics.get("shoulder_slope", 0.0))
+        shoulder_height_abs = abs(
+            metrics.get("shoulder_height_delta_deviation")
+            if metrics.get("shoulder_height_delta_deviation") is not None
+            else metrics.get("shoulder_height_delta_norm", 0.0)
+        )
+        shoulder_balance_score = max(
+            shoulder_abs / max(self._threshold("shoulder_slope_critical", 6.0), 1e-6),
+            shoulder_height_abs / max(self._threshold("shoulder_height_delta_critical", 0.08), 1e-6),
+        )
         self._append_issue(
             issues,
-            shoulder_abs,
-            self._threshold("shoulder_slope_warning", 3.0),
-            self._threshold("shoulder_slope_critical", 6.0),
-            "Level your shoulders",
-            "shoulder_slope",
+            shoulder_balance_score,
+            0.6,
+            1.0,
+            "Relax shoulders and keep them level",
+            "shoulder_balance",
         )
 
         head_tilt_abs = abs(metrics.get("head_tilt", 0.0))
@@ -139,7 +158,7 @@ class PostureAssessment:
             head_tilt_abs,
             self._threshold("head_tilt_warning", 5.0),
             self._threshold("head_tilt_critical", 10.0),
-            "Straighten your head",
+            "Keep your head upright",
             "head_tilt",
         )
 
@@ -149,32 +168,35 @@ class PostureAssessment:
             lateral,
             self._threshold("head_lateral_offset_warning", 0.08),
             self._threshold("head_lateral_offset_critical", 0.14),
-            "Center head over shoulders",
+            "Center your head over your shoulders",
             "head_lateral_offset_norm",
         )
 
         forward_angle = metrics.get("forward_head_angle_deviation")
         if forward_angle is None:
             forward_angle = metrics.get("forward_head_angle", 0.0)
+        forward_angle_risk = max(0.0, abs(forward_angle))
+        forward_offset = metrics.get("forward_head_offset_deviation")
+        forward_offset_risk = 0.0 if forward_offset is None else max(0.0, -forward_offset)
+        projection = metrics.get("forward_head_projection_deviation")
+        projection_risk = 0.0 if projection is None else max(0.0, abs(projection))
+        neck_compaction = metrics.get("neck_compaction_deviation")
+        neck_compaction_risk = 0.0 if neck_compaction is None else max(0.0, -neck_compaction)
+
+        forward_head_score = max(
+            forward_angle_risk / max(self._threshold("forward_head_warning", 10.0), 1e-6),
+            forward_offset_risk / max(self._threshold("forward_head_offset_warning", 0.08), 1e-6),
+            projection_risk / max(self._threshold("forward_head_projection_warning", 0.08), 1e-6),
+            neck_compaction_risk / max(self._threshold("neck_compaction_warning", 0.05), 1e-6),
+        )
         self._append_issue(
             issues,
-            abs(forward_angle),
-            self._threshold("forward_head_warning", 10.0),
-            self._threshold("forward_head_critical", 20.0),
-            "Tuck chin, sit tall",
-            "forward_head_angle",
+            forward_head_score,
+            1.0,
+            2.0,
+            "Sit tall and pull your head straight back",
+            "forward_head_posture",
         )
-
-        forward_offset = metrics.get("forward_head_offset_deviation")
-        if forward_offset is not None:
-            self._append_issue(
-                issues,
-                abs(forward_offset),
-                self._threshold("forward_head_offset_warning", 0.08),
-                self._threshold("forward_head_offset_critical", 0.16),
-                "Bring head back over shoulders",
-                "forward_head_offset_norm",
-            )
 
         return issues
 

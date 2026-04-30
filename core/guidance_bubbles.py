@@ -45,11 +45,11 @@ class GuidanceBubbles:
         else:
             # Backward-compatible fallback for callers that only pass metrics.
             if abs(metrics.get('shoulder_slope', 0)) > 5:
-                msgs.append(("Level Shoulders", (50, h - 100), (0, 255, 255)))
+                msgs.append(("Relax and level your shoulders", (50, h - 100), (0, 255, 255)))
             if abs(metrics.get('head_tilt', 0)) > 8:
-                msgs.append(("Straighten Head", (50, h - 60), (0, 255, 255)))
+                msgs.append(("Keep your head upright", (50, h - 60), (0, 255, 255)))
             if metrics.get('forward_head_angle', 0) > 15:
-                msgs.append(("Tuck Chin (Forward Head)", (50, h - 20), (0, 0, 255)))
+                msgs.append(("Sit tall and pull head back", (50, h - 20), (0, 0, 255)))
 
         # Draw all generated messages
         for txt, pos, col in msgs:

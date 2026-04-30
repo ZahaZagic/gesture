@@ -22,6 +22,12 @@ posture:
     forward_head_critical: 20.0
     forward_head_offset_warning: 0.08
     forward_head_offset_critical: 0.16
+    forward_head_projection_warning: 0.08
+    forward_head_projection_critical: 0.14
+    neck_compaction_warning: 0.05
+    neck_compaction_critical: 0.09
+    shoulder_height_delta_warning: 0.05
+    shoulder_height_delta_critical: 0.08
     kyphosis_warning: 15.0
     kyphosis_critical: 25.0
 

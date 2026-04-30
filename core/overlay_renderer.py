@@ -41,8 +41,8 @@ class OverlayRenderer:
         line_height = 25
         
         # Background box for text
-        cv2.rectangle(image, (0, 0), (430, 230), (0, 0, 0), -1)
-        cv2.addWeighted(image[0:230, 0:430], 0.7, image[0:230, 0:430], 0.3, 0)
+        cv2.rectangle(image, (0, 0), (470, 280), (0, 0, 0), -1)
+        cv2.addWeighted(image[0:280, 0:470], 0.7, image[0:280, 0:470], 0.3, 0)
 
         if assessment:
             status = assessment.get("status", "unknown").replace("_", " ").title()
@@ -63,6 +63,7 @@ class OverlayRenderer:
             "head_lateral_offset_norm",
             "forward_head_angle",
             "forward_head_offset_norm",
+            "neck_compaction_norm",
             "landmark_min_visibility",
         )
         for key in visible_metrics:
@@ -107,4 +108,3 @@ class OverlayRenderer:
         # Vertical reference (Spine-ish)
         mid_shoulder = ((l_shoulder[0] + r_shoulder[0])//2, (l_shoulder[1] + r_shoulder[1])//2)
         cv2.line(image, mid_shoulder, (mid_shoulder[0], mid_shoulder[1] + 200), (255, 255, 0), 1, cv2.LINE_AA)
-
