@@ -3,6 +3,7 @@ import random
 import time
 from collections import deque
 from pathlib import Path
+from uuid import uuid4
 
 import cv2
 import mediapipe as mp
@@ -45,6 +46,7 @@ from boxing_game.storage import SaveStore
 
 SAVE_SCHEMA_VERSION = 2
 ASSET_ROOT = Path(__file__).resolve().parent / "boxing_game" / "assets"
+CUSTOM_FIGHTER_ROOT = Path(__file__).resolve().parent / "boxing_game" / "custom_fighters"
 ARENA_BACKGROUND_NAMES = {arena["id"]: f"{arena['id']}.png" for arena in CAREER_ARENAS}
 TARGET_STYLE_BY_MOVE = {
     "left_straight": "jab_target",
@@ -98,6 +100,9 @@ class BoxingCommandArena:
         )
         self.mp_drawing = mp.solutions.drawing_utils
         self.storage = SaveStore()
+        saved = self.storage.load()
+        self.fighter_profile = self.load_fighter_profile(saved)
+        self.custom_heads = {"player": None, "opponents": {}}
         self.assets = self.load_assets()
         self.audio = AudioManager()
         self.font_paths = {
@@ -106,7 +111,6 @@ class BoxingCommandArena:
             "mono": "/System/Library/Fonts/SFNSMono.ttf",
         }
         self.font_cache = {}
-        saved = self.storage.load()
         self.career = BoxingCareer.from_dict(saved.get("career"))
         self.learned_profiles = self.load_learned_profiles(saved)
         self.tutorial_samples = {move_id: 0 for move_id in TUTORIAL_SEQUENCE}
@@ -114,6 +118,13 @@ class BoxingCommandArena:
         self.selected_hub_index = 0
         self.selected_training_index = 0
         self.selected_arena_index = 0
+        self.profile_tab = "player"
+        self.selected_custom_opponent_index = 0
+        self.profile_click_regions = []
+        self.profile_pointer = (0, 0)
+        self.crop_editor = None
+        self.profile_text_field = None
+        self.profile_status = "Mouse and keyboard are enabled here."
         self.active_arena = CAREER_ARENAS[0]
         self.name_input = self.career.player_name or ""
         self.menu_action_cooldown_until = 0.0
@@ -202,6 +213,49 @@ class BoxingCommandArena:
         self.current_opponent = OPPONENT_ROSTER[self.active_arena["id"]]
         self.reset_match()
 
+    def default_fighter_profile(self):
+        return {
+            "player": {
+                "height": "5'10\"",
+                "weight": "165 lb",
+                "head_path": "",
+            },
+            "opponents": [],
+            "selected_opponent_id": "",
+        }
+
+    def load_fighter_profile(self, saved):
+        profile = self.default_fighter_profile()
+        raw = saved.get("fighter_profile", {})
+        if not isinstance(raw, dict):
+            return profile
+        player = raw.get("player")
+        if isinstance(player, dict):
+            for key in ("height", "weight", "head_path"):
+                if key in player:
+                    profile["player"][key] = str(player.get(key) or "")
+        opponents = raw.get("opponents")
+        if isinstance(opponents, list):
+            for item in opponents:
+                if not isinstance(item, dict):
+                    continue
+                opponent_id = str(item.get("id") or uuid4().hex[:10])
+                profile["opponents"].append(
+                    {
+                        "id": opponent_id,
+                        "name": str(item.get("name") or "Custom Opponent"),
+                        "title": str(item.get("title") or "Personal Rival"),
+                        "height": str(item.get("height") or "5'10\""),
+                        "weight": str(item.get("weight") or "165 lb"),
+                        "record": str(item.get("record") or "0-0"),
+                        "head_path": str(item.get("head_path") or ""),
+                    }
+                )
+        selected_id = str(raw.get("selected_opponent_id") or "")
+        if any(item["id"] == selected_id for item in profile["opponents"]):
+            profile["selected_opponent_id"] = selected_id
+        return profile
+
     def load_learned_profiles(self, saved):
         profiles = dict(saved.get("learned_profiles", {}))
         schema_version = int(saved.get("schema_version", 0))
@@ -228,6 +282,7 @@ class BoxingCommandArena:
                 "schema_version": SAVE_SCHEMA_VERSION,
                 "career": self.career.to_dict(),
                 "learned_profiles": self.learned_profiles,
+                "fighter_profile": self.fighter_profile,
             }
         )
 
@@ -257,7 +312,328 @@ class BoxingCommandArena:
             path = ASSET_ROOT / "opponents" / f"{opponent['id']}_rgba.png"
             if path.exists():
                 assets["opponents"][opponent["id"]] = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
+        player_head = self.load_custom_head(self.fighter_profile["player"].get("head_path"))
+        self.custom_heads["player"] = player_head
+        for opponent in self.fighter_profile["opponents"]:
+            head = self.load_custom_head(opponent.get("head_path"))
+            if head is not None:
+                self.custom_heads["opponents"][opponent["id"]] = head
         return assets
+
+    def load_custom_head(self, path_value):
+        if not path_value:
+            return None
+        path = Path(path_value)
+        if not path.is_absolute():
+            path = Path(__file__).resolve().parent / path
+        if not path.exists():
+            return None
+        return cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
+
+    def fighter_storage_path(self, filename):
+        CUSTOM_FIGHTER_ROOT.mkdir(parents=True, exist_ok=True)
+        return CUSTOM_FIGHTER_ROOT / filename
+
+    def choose_image_file(self):
+        try:
+            import tkinter as tk
+            from tkinter import filedialog
+
+            root = tk.Tk()
+            root.withdraw()
+            root.attributes("-topmost", True)
+            filename = filedialog.askopenfilename(
+                title="Choose fighter photo",
+                filetypes=[
+                    ("Images", "*.png *.jpg *.jpeg *.bmp *.webp"),
+                    ("All files", "*.*"),
+                ],
+            )
+            root.destroy()
+            return filename
+        except Exception as exc:
+            self.profile_status = f"Could not open file picker: {exc}"
+            return ""
+
+    def start_crop_upload(self, target):
+        filename = self.choose_image_file()
+        if not filename:
+            return
+        image = cv2.imread(filename, cv2.IMREAD_COLOR)
+        if image is None:
+            self.profile_status = "That file could not be read as an image."
+            return
+        self.crop_editor = {
+            "target": target,
+            "image": image,
+            "scale": 1.0,
+            "offset": [0, 0],
+            "dragging": False,
+            "last_mouse": (0, 0),
+            "preview_rect": (0, 0, 0, 0),
+            "selection_rect": (0, 0, 0, 0),
+        }
+        if target == "opponent" and not self.fighter_profile["opponents"]:
+            self.add_custom_opponent()
+        self.profile_status = "Drag the photo, use mouse wheel or +/- to zoom, then Save Head."
+
+    def add_custom_opponent(self):
+        opponent = {
+            "id": uuid4().hex[:10],
+            "name": f"Opponent {len(self.fighter_profile['opponents']) + 1}",
+            "title": "Personal Rival",
+            "height": "5'10\"",
+            "weight": "165 lb",
+            "record": "0-0",
+            "head_path": "",
+        }
+        self.fighter_profile["opponents"].append(opponent)
+        self.selected_custom_opponent_index = len(self.fighter_profile["opponents"]) - 1
+        if not self.fighter_profile.get("selected_opponent_id"):
+            self.fighter_profile["selected_opponent_id"] = opponent["id"]
+        self.save_progress()
+        self.profile_status = "New opponent added. Type a name or upload a head."
+        return opponent
+
+    def current_profile_opponent(self):
+        opponents = self.fighter_profile["opponents"]
+        if not opponents:
+            return None
+        self.selected_custom_opponent_index = int(np.clip(self.selected_custom_opponent_index, 0, len(opponents) - 1))
+        return opponents[self.selected_custom_opponent_index]
+
+    def relative_custom_path(self, path):
+        try:
+            return str(path.relative_to(Path(__file__).resolve().parent))
+        except ValueError:
+            return str(path)
+
+    def crop_preview_image(self, size=420):
+        editor = self.crop_editor
+        if not editor:
+            return None
+        image = editor["image"]
+        return self.resize_cover(image, size, size)
+
+    def crop_selection_rect_for_size(self, size):
+        editor = self.crop_editor
+        crop_size = int(np.clip(size / max(editor["scale"], 0.01), size * 0.30, size * 0.92))
+        half = crop_size // 2
+        max_offset = max(0, size // 2 - half)
+        editor["offset"][0] = int(np.clip(editor["offset"][0], -max_offset, max_offset))
+        editor["offset"][1] = int(np.clip(editor["offset"][1], -max_offset, max_offset))
+        cx = size // 2 + int(editor["offset"][0])
+        cy = size // 2 + int(editor["offset"][1])
+        return cx - half, cy - half, cx + half, cy + half
+
+    def selected_crop_image(self, output_size=384):
+        preview_size = int(self.crop_editor.get("preview_size", 420))
+        preview = self.crop_preview_image(preview_size)
+        if preview is None:
+            return None
+        sx1, sy1, sx2, sy2 = self.crop_selection_rect_for_size(preview_size)
+        crop = preview[sy1:sy2, sx1:sx2]
+        if crop.size == 0:
+            return None
+        return cv2.resize(crop, (output_size, output_size), interpolation=cv2.INTER_LINEAR)
+
+    def save_crop_head(self):
+        if not self.crop_editor:
+            return
+        preview = self.selected_crop_image(384)
+        if preview is None:
+            return
+        rgba = cv2.cvtColor(preview, cv2.COLOR_BGR2BGRA)
+        mask = np.zeros((rgba.shape[0], rgba.shape[1]), dtype=np.uint8)
+        cv2.ellipse(mask, (rgba.shape[1] // 2, rgba.shape[0] // 2), (rgba.shape[1] // 2 - 8, rgba.shape[0] // 2 - 14), 0, 0, 360, 255, -1, cv2.LINE_AA)
+        rgba[:, :, 3] = mask
+        target = self.crop_editor["target"]
+        if target == "player":
+            path = self.fighter_storage_path("player_head.png")
+            self.fighter_profile["player"]["head_path"] = self.relative_custom_path(path)
+            self.custom_heads["player"] = rgba
+        else:
+            opponent = self.current_profile_opponent() or self.add_custom_opponent()
+            path = self.fighter_storage_path(f"opponent_{opponent['id']}.png")
+            opponent["head_path"] = self.relative_custom_path(path)
+            self.custom_heads["opponents"][opponent["id"]] = rgba
+        cv2.imwrite(str(path), rgba)
+        self.crop_editor = None
+        self.save_progress()
+        self.profile_status = "Head saved and ready for the fight."
+
+    def custom_opponent_head(self):
+        opponent = self.current_opponent_profile()
+        custom_id = opponent.get("custom_head_id")
+        if not custom_id:
+            return None
+        return self.custom_heads["opponents"].get(custom_id)
+
+    def overlay_custom_opponent_head(self, frame, center, head_size=112, angle=0.0, alpha_scale=0.98):
+        head = self.custom_opponent_head()
+        if head is None:
+            return
+        scale = head_size / max(head.shape[1], 1)
+        self.overlay_rgba(frame, head, center, scale=scale, angle=angle, alpha_scale=alpha_scale)
+
+    def draw_button(self, frame, rect, label, accent, action=None, payload=None, selected=False):
+        self.tech_panel(frame, rect, GOLD if selected else accent, fill=(14, 18, 28), alpha=0.80, line=3 if selected else 2)
+        x1, y1, x2, y2 = rect
+        self.draw_text(frame, label.upper(), ((x1 + x2) // 2, (y1 + y2) // 2 + 10), WHITE, size=22, family="display", anchor="ma", stroke=1)
+        if action:
+            self.profile_click_regions.append((rect, action, payload))
+
+    def point_in_rect(self, point, rect):
+        x, y = point
+        x1, y1, x2, y2 = rect
+        return x1 <= x <= x2 and y1 <= y <= y2
+
+    def on_mouse(self, event, x, y, flags, param):
+        self.profile_pointer = (x, y)
+        if self.app_state != "profile_fighters":
+            return
+        if self.crop_editor:
+            rect = self.crop_editor.get("selection_rect", (0, 0, 0, 0))
+            if event == cv2.EVENT_LBUTTONDOWN and self.point_in_rect((x, y), rect):
+                self.crop_editor["dragging"] = True
+                self.crop_editor["last_mouse"] = (x, y)
+                return
+            if event == cv2.EVENT_MOUSEMOVE and self.crop_editor.get("dragging"):
+                lx, ly = self.crop_editor["last_mouse"]
+                self.crop_editor["offset"][0] += x - lx
+                self.crop_editor["offset"][1] += y - ly
+                self.crop_editor["last_mouse"] = (x, y)
+                return
+            if event == cv2.EVENT_LBUTTONUP:
+                self.crop_editor["dragging"] = False
+                return
+            if event == cv2.EVENT_MOUSEWHEEL:
+                self.adjust_crop_zoom(1.10 if flags > 0 else 0.90)
+                return
+        if event != cv2.EVENT_LBUTTONDOWN:
+            return
+        for rect, action, payload in list(self.profile_click_regions):
+            if self.point_in_rect((x, y), rect):
+                self.handle_profile_action(action, payload)
+                return
+
+    def adjust_crop_zoom(self, factor):
+        if not self.crop_editor:
+            return
+        self.crop_editor["scale"] = float(np.clip(self.crop_editor["scale"] * factor, 0.45, 4.0))
+
+    def handle_profile_action(self, action, payload=None):
+        if action == "tab":
+            self.profile_tab = payload
+            self.profile_text_field = None
+            return
+        if action == "back":
+            self.crop_editor = None
+            self.app_state = "hub"
+            return
+        if action == "upload_player":
+            self.start_crop_upload("player")
+            return
+        if action == "upload_opponent":
+            self.start_crop_upload("opponent")
+            return
+        if action == "add_opponent":
+            self.add_custom_opponent()
+            return
+        if action == "select_opponent":
+            self.selected_custom_opponent_index = int(payload)
+            self.profile_text_field = None
+            return
+        if action == "use_opponent":
+            opponent = self.current_profile_opponent()
+            if opponent:
+                self.fighter_profile["selected_opponent_id"] = opponent["id"]
+                self.save_progress()
+                self.profile_status = f"{opponent['name']} selected for fights."
+            return
+        if action == "save_crop":
+            self.save_crop_head()
+            return
+        if action == "cancel_crop":
+            self.crop_editor = None
+            self.profile_status = "Crop canceled."
+            return
+        if action == "field":
+            self.profile_text_field = payload
+            return
+
+    def handle_profile_key(self, key):
+        if key in (255, -1):
+            return
+        if self.crop_editor:
+            if key in (ord("+"), ord("=")):
+                self.adjust_crop_zoom(1.10)
+            elif key in (ord("-"), ord("_")):
+                self.adjust_crop_zoom(0.90)
+            elif key in (10, 13):
+                self.save_crop_head()
+            elif key in (27, 8):
+                self.crop_editor = None
+                self.profile_status = "Crop canceled."
+            return
+
+        if key in (9,):
+            self.profile_tab = "opponents" if self.profile_tab == "player" else "player"
+            self.profile_text_field = None
+            return
+        if key in (ord("u"), ord("U")):
+            self.start_crop_upload("player" if self.profile_tab == "player" else "opponent")
+            return
+        if key in (ord("n"), ord("N")) and self.profile_tab == "opponents":
+            self.add_custom_opponent()
+            return
+        if key in (10, 13) and self.profile_tab == "opponents":
+            self.handle_profile_action("use_opponent")
+            return
+        if self.profile_tab == "opponents" and self.fighter_profile["opponents"]:
+            if key in (ord("j"), ord("J")):
+                self.selected_custom_opponent_index = min(len(self.fighter_profile["opponents"]) - 1, self.selected_custom_opponent_index + 1)
+            elif key in (ord("k"), ord("K")):
+                self.selected_custom_opponent_index = max(0, self.selected_custom_opponent_index - 1)
+
+        if not self.profile_text_field:
+            return
+        if key in (8, 127):
+            self.update_profile_text("")
+        elif 32 <= key <= 126:
+            char = chr(key)
+            if char.isalnum() or char in " '-\".#":
+                self.update_profile_text(char)
+
+    def update_profile_text(self, char):
+        field = self.profile_text_field
+        if not field:
+            return
+        if field == "player_name":
+            current = self.career.player_name or ""
+            if char:
+                self.career.player_name = (current + char)[:18]
+            else:
+                self.career.player_name = current[:-1]
+        elif field == "player_height":
+            self.update_profile_value(self.fighter_profile["player"], "height", char, 10)
+        elif field == "player_weight":
+            self.update_profile_value(self.fighter_profile["player"], "weight", char, 12)
+        elif field.startswith("opponent_"):
+            opponent = self.current_profile_opponent()
+            if not opponent:
+                return
+            key = field.replace("opponent_", "")
+            limit = 18 if key == "name" else 12
+            self.update_profile_value(opponent, key, char, limit)
+        self.save_progress()
+
+    def update_profile_value(self, target, key, char, limit):
+        current = str(target.get(key, ""))
+        if char:
+            target[key] = (current + char)[:limit]
+        else:
+            target[key] = current[:-1]
 
     def resize_cover(self, image, frame_w, frame_h):
         if image is None:
@@ -338,7 +714,27 @@ class BoxingCommandArena:
 
     def current_opponent_profile(self):
         arena = self.active_arena if self.app_state == "fight" else self.current_arena_for_ui()
-        return OPPONENT_ROSTER[arena["id"]]
+        base = dict(OPPONENT_ROSTER[arena["id"]])
+        custom = self.selected_custom_opponent()
+        if custom:
+            base.update(
+                {
+                    "name": custom["name"],
+                    "title": custom["title"],
+                    "height": custom["height"],
+                    "weight": custom["weight"],
+                    "record": custom["record"],
+                    "custom_head_id": custom["id"],
+                }
+            )
+        return base
+
+    def selected_custom_opponent(self):
+        selected_id = self.fighter_profile.get("selected_opponent_id", "")
+        for opponent in self.fighter_profile.get("opponents", []):
+            if opponent["id"] == selected_id:
+                return opponent
+        return None
 
     def glove_sprite(self, side):
         arena_id = (self.active_arena if self.app_state == "fight" else self.current_arena_for_ui())["id"]
@@ -497,7 +893,7 @@ class BoxingCommandArena:
         now = time.time()
         arena = CAREER_ARENAS[self.selected_arena_index]
         self.active_arena = arena
-        self.current_opponent = OPPONENT_ROSTER[arena["id"]]
+        self.current_opponent = self.current_opponent_profile()
         if not self.career.is_unlocked(arena["id"]):
             self.set_message(f"{arena['name']} is locked: {arena['unlock_rule']}", 2.2)
             return
@@ -1325,6 +1721,9 @@ class BoxingCommandArena:
                 self.app_state = "locker"
             elif target == "Training":
                 self.app_state = "training_menu"
+            elif target == "Profile / Fighters":
+                self.app_state = "profile_fighters"
+                self.profile_status = "Mouse and keyboard are enabled here."
             return
 
         if self.app_state == "arena_map":
@@ -1336,7 +1735,7 @@ class BoxingCommandArena:
             self.start_training(selected)
 
     def handle_menu_back(self):
-        if self.app_state in ("arena_map", "locker", "training_menu"):
+        if self.app_state in ("arena_map", "locker", "training_menu", "profile_fighters"):
             self.app_state = "hub"
         elif self.app_state == "training":
             self.finish_training()
@@ -2417,6 +2816,7 @@ class BoxingCommandArena:
         if sprite is not None:
             scale = min((x2 - x1 - 28) / max(sprite.shape[1], 1), (y2 - y1 - 180) / max(sprite.shape[0], 1))
             self.overlay_rgba(frame, sprite, ((x1 + x2) // 2, y1 + 182), scale=scale, angle=0.0, alpha_scale=0.98)
+            self.overlay_custom_opponent_head(frame, ((x1 + x2) // 2, y1 + 104), head_size=126)
         self.draw_text(frame, opponent["name"].upper(), ((x1 + x2) // 2, y2 - 108), WHITE, size=30, family="display", anchor="ma", stroke=1)
         self.draw_text(frame, opponent["title"].upper(), ((x1 + x2) // 2, y2 - 82), SOFT, size=18, family="body", anchor="ma")
         self.draw_text(frame, f"HEIGHT {opponent.get('height', '--')}   WEIGHT {opponent.get('weight', '--')}", ((x1 + x2) // 2, y2 - 54), CYAN, size=18, family="body", anchor="ma")
@@ -2449,6 +2849,8 @@ class BoxingCommandArena:
             sprite_scale = min(frame.shape[1] / max(sprite.shape[1], 1) * 0.34, frame.shape[0] / max(sprite.shape[0], 1) * 0.62)
             sprite_center = (cx + recoil, cy - 20)
             self.overlay_rgba(frame, sprite_for_ring, sprite_center, scale=sprite_scale, angle=0.0, alpha_scale=0.86)
+            head_size = 122 if calm_photo_mode else 96
+            self.overlay_custom_opponent_head(frame, (cx + recoil, cy - 112), head_size=head_size, alpha_scale=0.98)
             if ring_focus_mode:
                 self.mask_opponent_sprite_gloves(frame, sprite_center[0], sprite_center[1], sprite_scale * 2.5)
             if calm_photo_mode:
@@ -2985,6 +3387,155 @@ class BoxingCommandArena:
             line_gap=10,
         )
 
+    def draw_head_preview(self, frame, head, center, size, label):
+        x1 = center[0] - size // 2
+        y1 = center[1] - size // 2
+        x2 = x1 + size
+        y2 = y1 + size
+        cv2.circle(frame, center, size // 2 + 8, CYAN, 2, cv2.LINE_AA)
+        cv2.circle(frame, center, size // 2, (26, 30, 44), -1, cv2.LINE_AA)
+        if head is not None:
+            scale = min(size / max(head.shape[1], 1), size / max(head.shape[0], 1))
+            self.overlay_rgba(frame, head, center, scale=scale, alpha_scale=0.98)
+        else:
+            cv2.circle(frame, center, size // 4, SOFT, 2, cv2.LINE_AA)
+            cv2.line(frame, (center[0], center[1] + size // 4), (center[0], center[1] + size // 2 - 12), SOFT, 2, cv2.LINE_AA)
+        self.draw_text(frame, label, ((x1 + x2) // 2, y2 + 28), SOFT, size=16, family="body", anchor="ma")
+
+    def draw_text_field(self, frame, rect, label, value, field_key):
+        x1, y1, x2, y2 = rect
+        active = self.profile_text_field == field_key
+        self.tech_panel(frame, rect, GOLD if active else CYAN, fill=(12, 16, 26), alpha=0.78, line=2)
+        self.draw_text(frame, label.upper(), (x1 + 14, y1 + 22), SOFT, size=14, family="mono")
+        shown = value if value else "TYPE"
+        self.draw_text(frame, shown, (x1 + 14, y1 + 58), WHITE if value else SOFT, size=24, family="display")
+        self.profile_click_regions.append((rect, "field", field_key))
+
+    def draw_profile_fighters(self, frame):
+        h, w = frame.shape[:2]
+        self.profile_click_regions = []
+        self.draw_text(frame, "PROFILE / FIGHTERS", (40, 64), WHITE, size=42, family="display", stroke=1)
+        self.draw_text(frame, "Upload photos, crop the head, and choose who appears across the ring.", (40, 98), SOFT, size=20, family="body")
+        self.draw_button(frame, (w - 172, 34, w - 42, 84), "Back", RED, "back")
+        self.draw_button(frame, (40, 124, 230, 182), "My Boxer", CYAN, "tab", "player", selected=self.profile_tab == "player")
+        self.draw_button(frame, (248, 124, 438, 182), "Opponents", MAGENTA, "tab", "opponents", selected=self.profile_tab == "opponents")
+
+        body = (40, 206, w - 40, h - 72)
+        self.tech_panel(frame, body, CYAN if self.profile_tab == "player" else MAGENTA, fill=(12, 16, 26), alpha=0.82)
+        if self.crop_editor:
+            self.draw_crop_editor(frame, body)
+        elif self.profile_tab == "player":
+            self.draw_player_profile_tab(frame, body)
+        else:
+            self.draw_opponent_profile_tab(frame, body)
+        self.draw_text(frame, self.profile_status, (52, h - 34), GOLD, size=18, family="body", stroke=1)
+
+    def draw_player_profile_tab(self, frame, rect):
+        x1, y1, x2, y2 = rect
+        player = self.fighter_profile["player"]
+        self.draw_head_preview(frame, self.custom_heads.get("player"), (x1 + 132, y1 + 156), 152, "Player head")
+        self.draw_button(frame, (x1 + 50, y1 + 278, x1 + 214, y1 + 332), "Upload Head", CYAN, "upload_player")
+        self.draw_text_field(frame, (x1 + 282, y1 + 56, x1 + 548, y1 + 126), "Fighter Name", self.career.player_name or "Player", "player_name")
+        self.draw_text_field(frame, (x1 + 282, y1 + 154, x1 + 548, y1 + 224), "Height", player.get("height", ""), "player_height")
+        self.draw_text_field(frame, (x1 + 282, y1 + 252, x1 + 548, y1 + 322), "Weight", player.get("weight", ""), "player_weight")
+        stats = self.career.stats
+        self.draw_text(frame, f"Power {stats['power']:.1f}   Stamina {stats['stamina']:.1f}   Agility {stats['agility']:.1f}", (x1 + 620, y1 + 86), GOLD, size=24, family="display")
+        self.draw_text(frame, f"Record {self.career.record['wins']}-{self.career.record['losses']}   Rank #{self.career.current_world_rank()}", (x1 + 620, y1 + 126), WHITE, size=21, family="body")
+        self.draw_text_block(
+            frame,
+            [
+                "Click a field and type to edit.",
+                "Use Upload Head to crop your own profile photo.",
+                "Your stats still come from training and fights.",
+            ],
+            x1 + 620,
+            y1 + 174,
+            size=19,
+            family="body",
+            color=SOFT,
+            line_gap=14,
+        )
+
+    def draw_opponent_profile_tab(self, frame, rect):
+        x1, y1, x2, y2 = rect
+        opponents = self.fighter_profile["opponents"]
+        self.draw_button(frame, (x1 + 32, y1 + 34, x1 + 210, y1 + 88), "Add Opponent", GOLD, "add_opponent")
+        self.draw_button(frame, (x1 + 226, y1 + 34, x1 + 404, y1 + 88), "Upload Head", MAGENTA, "upload_opponent")
+        self.draw_button(frame, (x1 + 420, y1 + 34, x1 + 598, y1 + 88), "Use In Fight", CYAN, "use_opponent")
+        list_rect = (x1 + 32, y1 + 116, x1 + 404, y2 - 32)
+        self.tech_panel(frame, list_rect, MAGENTA, fill=(8, 12, 22), alpha=0.66)
+        if not opponents:
+            self.draw_text(frame, "No custom opponents yet.", (list_rect[0] + 18, list_rect[1] + 46), SOFT, size=20, family="body")
+            self.draw_text(frame, "Click Add Opponent or Upload Head.", (list_rect[0] + 18, list_rect[1] + 82), WHITE, size=18, family="body")
+            return
+        selected_id = self.fighter_profile.get("selected_opponent_id", "")
+        for idx, opponent in enumerate(opponents[:7]):
+            y = list_rect[1] + 18 + idx * 64
+            selected = idx == self.selected_custom_opponent_index
+            active = opponent["id"] == selected_id
+            row = (list_rect[0] + 12, y, list_rect[2] - 12, y + 52)
+            self.tech_panel(frame, row, GOLD if selected else CYAN if active else SOFT, fill=(14, 18, 28), alpha=0.62, line=2)
+            self.draw_text(frame, opponent["name"].upper(), (row[0] + 14, row[1] + 24), WHITE, size=18, family="display")
+            self.draw_text(frame, "ACTIVE" if active else opponent["title"], (row[0] + 14, row[1] + 44), GOLD if active else SOFT, size=13, family="mono")
+            self.profile_click_regions.append((row, "select_opponent", idx))
+
+        opponent = self.current_profile_opponent()
+        if opponent is None:
+            return
+        head = self.custom_heads["opponents"].get(opponent["id"])
+        self.draw_head_preview(frame, head, (x1 + 526, y1 + 206), 156, "Opponent head")
+        self.draw_text_field(frame, (x1 + 660, y1 + 116, x2 - 54, y1 + 186), "Name", opponent["name"], "opponent_name")
+        self.draw_text_field(frame, (x1 + 660, y1 + 206, x2 - 54, y1 + 276), "Height", opponent["height"], "opponent_height")
+        self.draw_text_field(frame, (x1 + 660, y1 + 296, x2 - 54, y1 + 366), "Weight", opponent["weight"], "opponent_weight")
+        self.draw_text(frame, "This opponent replaces the displayed rival name/head across all arenas.", (x1 + 466, y2 - 92), SOFT, size=18, family="body")
+        self.draw_text(frame, "Built-in bodies, gloves, arena difficulty, and career progression stay unchanged.", (x1 + 466, y2 - 58), WHITE, size=18, family="body")
+
+    def draw_crop_editor(self, frame, rect):
+        x1, y1, x2, y2 = rect
+        crop_size = min(420, y2 - y1 - 112)
+        crop_x1 = x1 + 58
+        crop_y1 = y1 + 62
+        preview_rect = (crop_x1, crop_y1, crop_x1 + crop_size, crop_y1 + crop_size)
+        self.crop_editor["preview_rect"] = preview_rect
+        self.crop_editor["preview_size"] = crop_size
+        preview = self.crop_preview_image(crop_size)
+        self.tech_panel(frame, (preview_rect[0] - 10, preview_rect[1] - 10, preview_rect[2] + 10, preview_rect[3] + 10), GOLD, fill=(10, 14, 24), alpha=0.90, line=3)
+        if preview is not None:
+            frame[preview_rect[1] : preview_rect[3], preview_rect[0] : preview_rect[2]] = preview
+        sx1, sy1, sx2, sy2 = self.crop_selection_rect_for_size(crop_size)
+        selection_rect = (preview_rect[0] + sx1, preview_rect[1] + sy1, preview_rect[0] + sx2, preview_rect[1] + sy2)
+        self.crop_editor["selection_rect"] = selection_rect
+        shade = frame.copy()
+        cv2.rectangle(shade, (preview_rect[0], preview_rect[1]), (preview_rect[2], selection_rect[1]), (4, 6, 12), -1)
+        cv2.rectangle(shade, (preview_rect[0], selection_rect[3]), (preview_rect[2], preview_rect[3]), (4, 6, 12), -1)
+        cv2.rectangle(shade, (preview_rect[0], selection_rect[1]), (selection_rect[0], selection_rect[3]), (4, 6, 12), -1)
+        cv2.rectangle(shade, (selection_rect[2], selection_rect[1]), (preview_rect[2], selection_rect[3]), (4, 6, 12), -1)
+        cv2.addWeighted(shade, 0.36, frame, 0.64, 0, frame)
+        cv2.rectangle(frame, (selection_rect[0], selection_rect[1]), (selection_rect[2], selection_rect[3]), GOLD, 3, cv2.LINE_AA)
+        center = ((selection_rect[0] + selection_rect[2]) // 2, (selection_rect[1] + selection_rect[3]) // 2)
+        selection_size = selection_rect[2] - selection_rect[0]
+        cv2.ellipse(frame, center, (selection_size // 2 - 8, selection_size // 2 - 14), 0, 0, 360, GOLD, 2, cv2.LINE_AA)
+        cv2.line(frame, (center[0] - selection_size // 2 + 20, center[1]), (center[0] + selection_size // 2 - 20, center[1]), SOFT, 1, cv2.LINE_AA)
+        cv2.line(frame, (center[0], center[1] - selection_size // 2 + 20), (center[0], center[1] + selection_size // 2 - 20), SOFT, 1, cv2.LINE_AA)
+        target_label = "MY BOXER" if self.crop_editor["target"] == "player" else "OPPONENT"
+        self.draw_text(frame, f"CROP HEAD: {target_label}", (x1 + 470, y1 + 88), WHITE, size=34, family="display", stroke=1)
+        self.draw_text_block(
+            frame,
+            [
+                "Drag the gold crop square onto the head.",
+                "Mouse wheel or +/- changes the crop zoom.",
+                "The selected square is saved as a transparent head PNG.",
+            ],
+            x1 + 470,
+            y1 + 132,
+            size=21,
+            family="body",
+            color=SOFT,
+            line_gap=16,
+        )
+        self.draw_button(frame, (x1 + 470, y1 + 270, x1 + 650, y1 + 326), "Save Head", GREEN, "save_crop")
+        self.draw_button(frame, (x1 + 674, y1 + 270, x1 + 854, y1 + 326), "Cancel", RED, "cancel_crop")
+
     def draw_name_entry(self, frame):
         h, w = frame.shape[:2]
         hero = self.assets["backgrounds"].get("national")
@@ -3024,10 +3575,12 @@ class BoxingCommandArena:
         self.draw_text(frame, f"FIGHTER: {self.career.player_name or 'PLAYER'}", (40, 98), CYAN, size=20, family="body")
         self.draw_text(frame, f"Cash ${self.career.cash}   Points {self.career.points}   W-L {self.career.record['wins']}-{self.career.record['losses']}   Rank #{self.career.current_world_rank()}", (40, 124), GOLD, size=20, family="body")
         menu_y = h // 2
-        card_w = 210
-        starts = [w // 2 - 350, w // 2 - 105, w // 2 + 140]
+        card_w = 216
+        gap = 24
+        total_w = len(HUB_MENU) * card_w + (len(HUB_MENU) - 1) * gap
+        start_x = (w - total_w) // 2
         for idx, label in enumerate(HUB_MENU):
-            x1 = starts[idx]
+            x1 = start_x + idx * (card_w + gap)
             x2 = x1 + card_w
             y1 = menu_y - 70
             y2 = menu_y + 70
@@ -3049,7 +3602,7 @@ class BoxingCommandArena:
         top_card = (40, 120, w - 40, 308)
         self.tech_panel(frame, top_card, GOLD, fill=(10, 14, 24), alpha=0.84, line=2)
         bg_preview = self.assets["backgrounds"].get(arena["id"])
-        opp = self.current_opponent_profile() if self.active_arena == arena else OPPONENT_ROSTER[arena["id"]]
+        opp = self.current_opponent_profile()
         opp_sprite = self.assets["opponents"].get(opp["id"])
         if bg_preview is not None:
             bg_resized = self.resize_cover(bg_preview, 250, 148)
@@ -3058,6 +3611,7 @@ class BoxingCommandArena:
             opp_h, opp_w = opp_sprite.shape[:2]
             scale = min(132 / max(opp_h, 1), 168 / max(opp_w, 1))
             self.overlay_rgba(frame, opp_sprite, (top_card[0] + 336, top_card[1] + 98), scale=scale, alpha_scale=0.96)
+            self.overlay_custom_opponent_head(frame, (top_card[0] + 336, top_card[1] + 62), head_size=56)
         self.draw_text(frame, f"{arena['name'].upper()}  |  {arena['scene'].upper()}", (top_card[0] + 418, top_card[1] + 42), WHITE, size=28, family="display")
         self.draw_text(frame, opp["name"].upper(), (top_card[0] + 418, top_card[1] + 82), CYAN, size=22, family="display")
         self.draw_text(frame, f"{opp['title']}   {opp['height']}   {opp['weight']}   {opp['record']}", (top_card[0] + 418, top_card[1] + 108), SOFT, size=17, family="body")
@@ -3198,6 +3752,8 @@ class BoxingCommandArena:
             self.draw_text(frame, f"Current Step {self.training_combo_index + 1}/{len(self.training_combo_moves)}", (42, 178), CYAN, size=18, family="body")
 
     def run(self):
+        cv2.namedWindow(WINDOW_NAME)
+        cv2.setMouseCallback(WINDOW_NAME, self.on_mouse)
         while self.cap.isOpened():
             ok, frame = self.cap.read()
             if not ok:
@@ -3224,7 +3780,7 @@ class BoxingCommandArena:
                         right_motion = self.summarize_wrist_motion("right", pose_data)
                         if self.motion_is_active(left_motion, strict=False) or self.motion_is_active(right_motion, strict=False):
                             self.player_getup_meter = min(1.0, self.player_getup_meter + 0.035)
-                    if self.app_state in ("hub", "arena_map", "locker", "training_menu") or (self.app_state == "fight" and self.match_over):
+                    if self.app_state in ("hub", "arena_map", "locker", "training_menu", "profile_fighters") or (self.app_state == "fight" and self.match_over):
                         self.handle_menu_gestures(pose_data, defense, now)
                     if self.app_state == "fight" and not self.paused:
                         if self.knockdown_state:
@@ -3263,6 +3819,8 @@ class BoxingCommandArena:
                 self.draw_arena_map(frame)
             elif self.app_state == "locker":
                 self.draw_locker_room(frame)
+            elif self.app_state == "profile_fighters":
+                self.draw_profile_fighters(frame)
             elif self.app_state == "training_menu":
                 self.draw_training_menu(frame)
             else:
@@ -3318,9 +3876,19 @@ class BoxingCommandArena:
 
             cv2.imshow(WINDOW_NAME, frame)
             key = cv2.waitKey(1) & 0xFF
+            if self.app_state == "profile_fighters":
+                if key in (ord("q"), 27):
+                    self.crop_editor = None
+                    self.app_state = "hub"
+                    continue
+                self.handle_profile_key(key)
             if key == ord("p") and self.app_state in ("fight", "training"):
                 self.paused = not self.paused
-            if key == ord("q") and self.app_state in ("hub", "arena_map", "locker", "training_menu", "name_entry"):
+            if key == ord("q") and self.app_state in ("hub", "arena_map", "locker", "training_menu", "profile_fighters", "name_entry"):
+                if self.app_state == "profile_fighters":
+                    self.crop_editor = None
+                    self.app_state = "hub"
+                    continue
                 break
             if key == ord("q") and self.app_state == "fight":
                 self.reset_match()

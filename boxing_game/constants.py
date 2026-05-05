@@ -112,7 +112,7 @@ CAREER_ARENAS = [
     },
 ]
 
-HUB_MENU = ["Fight", "Locker", "Training"]
+HUB_MENU = ["Fight", "Training", "Profile / Fighters", "Locker"]
 TRAINING_MENU = ["Power", "Stamina", "Agility"]
 
 OPPONENT_ROSTER = {
