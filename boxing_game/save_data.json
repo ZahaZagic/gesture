@@ -1,14 +1,24 @@
 {
   "schema_version": 2,
   "career": {
-    "cash": 40419,
+    "cash": 41490,
     "player_name": "Zaha",
-    "points": 15555,
+    "points": 16060,
     "record": {
-      "wins": 33,
+      "wins": 34,
       "losses": 0
     },
     "match_history": [
+      {
+        "arena": "London",
+        "scene": "West End Fight Night",
+        "opponent": "Dante Crest",
+        "result": "WIN",
+        "detail": "TKO WIN",
+        "payout": 1216,
+        "landed_hits": 19,
+        "combo_peak": 3
+      },
       {
         "arena": "London",
         "scene": "West End Fight Night",
@@ -36,13 +46,13 @@
       "agility": 14.894758316763456
     },
     "techniques": {
-      "jab": 15.23999999999999,
-      "hook": 12.939999999999987,
-      "uppercut": 12.639999999999986,
-      "body": 14.180000000000012
+      "jab": 17.44000000000001,
+      "hook": 13.239999999999986,
+      "uppercut": 13.939999999999982,
+      "body": 17.219999999999988
     },
     "state_belt_won": true,
-    "completed_tasks": 33,
+    "completed_tasks": 34,
     "sponsor_tasks": [
       "Land 5 clean punches",
       "Win with more than half HP",
@@ -464,5 +474,14 @@
       "motion_energy_min": 0.5761482156813145,
       "motion_energy_max": 6.733082675933838
     }
+  },
+  "fighter_profile": {
+    "player": {
+      "height": "6'2",
+      "weight": "165 lb",
+      "head_path": ""
+    },
+    "opponents": [],
+    "selected_opponent_id": ""
   }
 }

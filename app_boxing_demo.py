@@ -1,5 +1,6 @@
 import math
 import random
+import threading
 import time
 from collections import deque
 from pathlib import Path
@@ -120,11 +121,13 @@ class BoxingCommandArena:
         self.selected_arena_index = 0
         self.profile_tab = "player"
         self.selected_custom_opponent_index = 0
-        self.profile_click_regions = []
+        self.click_regions = []
         self.profile_pointer = (0, 0)
         self.crop_editor = None
         self.profile_text_field = None
         self.profile_status = "Mouse and keyboard are enabled here."
+        self.pending_upload_result = None
+        self.upload_thread = None
         self.active_arena = CAREER_ARENAS[0]
         self.name_input = self.career.player_name or ""
         self.menu_action_cooldown_until = 0.0
@@ -355,13 +358,43 @@ class BoxingCommandArena:
             self.profile_status = f"Could not open file picker: {exc}"
             return ""
 
-    def start_crop_upload(self, target):
-        filename = self.choose_image_file()
-        if not filename:
+    def request_crop_upload(self, target):
+        if self.upload_thread and self.upload_thread.is_alive():
+            self.profile_status = "Photo picker already open."
             return
-        image = cv2.imread(filename, cv2.IMREAD_COLOR)
-        if image is None:
-            self.profile_status = "That file could not be read as an image."
+        self.profile_status = "Opening photo picker..."
+        self.pending_upload_result = None
+
+        def worker():
+            filename = self.choose_image_file()
+            if not filename:
+                self.pending_upload_result = {"target": target, "status": "cancel"}
+                return
+            image = cv2.imread(filename, cv2.IMREAD_COLOR)
+            if image is None:
+                self.pending_upload_result = {"target": target, "status": "error", "message": "That file could not be read as an image."}
+                return
+            self.pending_upload_result = {"target": target, "status": "ready", "image": image}
+
+        self.upload_thread = threading.Thread(target=worker, daemon=True)
+        self.upload_thread.start()
+
+    def consume_pending_upload(self):
+        result = self.pending_upload_result
+        if not result:
+            return
+        self.pending_upload_result = None
+        status = result.get("status")
+        if status == "cancel":
+            self.profile_status = "Upload canceled."
+            return
+        if status == "error":
+            self.profile_status = result.get("message") or "That file could not be read as an image."
+            return
+        image = result.get("image")
+        target = result.get("target")
+        if image is None or target not in ("player", "opponent"):
+            self.profile_status = "Upload failed."
             return
         self.crop_editor = {
             "target": target,
@@ -372,6 +405,8 @@ class BoxingCommandArena:
             "last_mouse": (0, 0),
             "preview_rect": (0, 0, 0, 0),
             "selection_rect": (0, 0, 0, 0),
+            "preview_cache_size": 0,
+            "preview_cache": None,
         }
         if target == "opponent" and not self.fighter_profile["opponents"]:
             self.add_custom_opponent()
@@ -412,8 +447,13 @@ class BoxingCommandArena:
         editor = self.crop_editor
         if not editor:
             return None
+        if editor.get("preview_cache") is not None and editor.get("preview_cache_size") == size:
+            return editor["preview_cache"]
         image = editor["image"]
-        return self.resize_cover(image, size, size)
+        preview = self.resize_cover(image, size, size)
+        editor["preview_cache_size"] = size
+        editor["preview_cache"] = preview
+        return preview
 
     def crop_selection_rect_for_size(self, size):
         editor = self.crop_editor
@@ -479,9 +519,9 @@ class BoxingCommandArena:
     def draw_button(self, frame, rect, label, accent, action=None, payload=None, selected=False):
         self.tech_panel(frame, rect, GOLD if selected else accent, fill=(14, 18, 28), alpha=0.80, line=3 if selected else 2)
         x1, y1, x2, y2 = rect
-        self.draw_text(frame, label.upper(), ((x1 + x2) // 2, (y1 + y2) // 2 + 10), WHITE, size=22, family="display", anchor="ma", stroke=1)
+        self.draw_text(frame, label.upper(), ((x1 + x2) // 2, (y1 + y2) // 2 + 1), WHITE, size=22, family="display", anchor="mm", stroke=1)
         if action:
-            self.profile_click_regions.append((rect, action, payload))
+            self.click_regions.append((rect, action, payload))
 
     def point_in_rect(self, point, rect):
         x, y = point
@@ -490,9 +530,10 @@ class BoxingCommandArena:
 
     def on_mouse(self, event, x, y, flags, param):
         self.profile_pointer = (x, y)
-        if self.app_state != "profile_fighters":
+        interactive_states = {"hub", "arena_map", "locker", "profile_fighters", "training_menu"}
+        if self.app_state not in interactive_states:
             return
-        if self.crop_editor:
+        if self.crop_editor and self.app_state == "profile_fighters":
             rect = self.crop_editor.get("selection_rect", (0, 0, 0, 0))
             if event == cv2.EVENT_LBUTTONDOWN and self.point_in_rect((x, y), rect):
                 self.crop_editor["dragging"] = True
@@ -510,12 +551,68 @@ class BoxingCommandArena:
             if event == cv2.EVENT_MOUSEWHEEL:
                 self.adjust_crop_zoom(1.10 if flags > 0 else 0.90)
                 return
-        if event != cv2.EVENT_LBUTTONDOWN:
+        if event != cv2.EVENT_LBUTTONUP:
             return
-        for rect, action, payload in list(self.profile_click_regions):
+        for rect, action, payload in list(self.click_regions):
             if self.point_in_rect((x, y), rect):
-                self.handle_profile_action(action, payload)
+                self.handle_click_action(action, payload)
                 return
+
+    def navigate_back(self):
+        if self.crop_editor:
+            self.crop_editor = None
+            self.profile_status = "Crop canceled."
+            return True
+        parent_by_state = {
+            "arena_map": "hub",
+            "locker": "hub",
+            "training_menu": "hub",
+            "profile_fighters": "hub",
+            "fight": "arena_map",
+            "training": "training_menu",
+        }
+        target = parent_by_state.get(self.app_state)
+        if not target:
+            return False
+        if self.app_state == "training":
+            self.finish_training()
+            self.app_state = "training_menu"
+            return True
+        self.app_state = target
+        return True
+
+    def handle_click_action(self, action, payload=None):
+        if action in {
+            "tab",
+            "back",
+            "upload_player",
+            "upload_opponent",
+            "add_opponent",
+            "select_opponent",
+            "use_opponent",
+            "save_crop",
+            "cancel_crop",
+            "field",
+        }:
+            self.handle_profile_action(action, payload)
+            return
+        if action == "hub_open":
+            self.selected_hub_index = int(payload)
+            self.handle_menu_confirm()
+            return
+        if action == "arena_select":
+            self.selected_arena_index = int(payload)
+            return
+        if action == "arena_enter":
+            self.enter_fight()
+            return
+        if action == "training_start":
+            self.selected_training_index = int(payload)
+            self.start_training(TRAINING_MENU[self.selected_training_index].lower())
+            return
+        if action == "menu_back":
+            self.navigate_back()
+            return
 
     def adjust_crop_zoom(self, factor):
         if not self.crop_editor:
@@ -528,14 +625,13 @@ class BoxingCommandArena:
             self.profile_text_field = None
             return
         if action == "back":
-            self.crop_editor = None
-            self.app_state = "hub"
+            self.navigate_back()
             return
         if action == "upload_player":
-            self.start_crop_upload("player")
+            self.request_crop_upload("player")
             return
         if action == "upload_opponent":
-            self.start_crop_upload("opponent")
+            self.request_crop_upload("opponent")
             return
         if action == "add_opponent":
             self.add_custom_opponent()
@@ -582,7 +678,7 @@ class BoxingCommandArena:
             self.profile_text_field = None
             return
         if key in (ord("u"), ord("U")):
-            self.start_crop_upload("player" if self.profile_tab == "player" else "opponent")
+            self.request_crop_upload("player" if self.profile_tab == "player" else "opponent")
             return
         if key in (ord("n"), ord("N")) and self.profile_tab == "opponents":
             self.add_custom_opponent()
@@ -1735,10 +1831,7 @@ class BoxingCommandArena:
             self.start_training(selected)
 
     def handle_menu_back(self):
-        if self.app_state in ("arena_map", "locker", "training_menu", "profile_fighters"):
-            self.app_state = "hub"
-        elif self.app_state == "training":
-            self.finish_training()
+        self.navigate_back()
 
     def complete_tutorial_step(self):
         move_id = TUTORIAL_SEQUENCE[self.tutorial_step]
@@ -3409,11 +3502,11 @@ class BoxingCommandArena:
         self.draw_text(frame, label.upper(), (x1 + 14, y1 + 22), SOFT, size=14, family="mono")
         shown = value if value else "TYPE"
         self.draw_text(frame, shown, (x1 + 14, y1 + 58), WHITE if value else SOFT, size=24, family="display")
-        self.profile_click_regions.append((rect, "field", field_key))
+        self.click_regions.append((rect, "field", field_key))
 
     def draw_profile_fighters(self, frame):
         h, w = frame.shape[:2]
-        self.profile_click_regions = []
+        self.click_regions = []
         self.draw_text(frame, "PROFILE / FIGHTERS", (40, 64), WHITE, size=42, family="display", stroke=1)
         self.draw_text(frame, "Upload photos, crop the head, and choose who appears across the ring.", (40, 98), SOFT, size=20, family="body")
         self.draw_button(frame, (w - 172, 34, w - 42, 84), "Back", RED, "back")
@@ -3477,7 +3570,7 @@ class BoxingCommandArena:
             self.tech_panel(frame, row, GOLD if selected else CYAN if active else SOFT, fill=(14, 18, 28), alpha=0.62, line=2)
             self.draw_text(frame, opponent["name"].upper(), (row[0] + 14, row[1] + 24), WHITE, size=18, family="display")
             self.draw_text(frame, "ACTIVE" if active else opponent["title"], (row[0] + 14, row[1] + 44), GOLD if active else SOFT, size=13, family="mono")
-            self.profile_click_regions.append((row, "select_opponent", idx))
+            self.click_regions.append((row, "select_opponent", idx))
 
         opponent = self.current_profile_opponent()
         if opponent is None:
@@ -3571,6 +3664,7 @@ class BoxingCommandArena:
 
     def draw_hub(self, frame):
         h, w = frame.shape[:2]
+        self.click_regions = []
         self.draw_text(frame, "CAREER MAP", (40, 64), WHITE, size=42, family="display", stroke=1)
         self.draw_text(frame, f"FIGHTER: {self.career.player_name or 'PLAYER'}", (40, 98), CYAN, size=20, family="body")
         self.draw_text(frame, f"Cash ${self.career.cash}   Points {self.career.points}   W-L {self.career.record['wins']}-{self.career.record['losses']}   Rank #{self.career.current_world_rank()}", (40, 124), GOLD, size=20, family="body")
@@ -3588,16 +3682,20 @@ class BoxingCommandArena:
             border = GOLD if selected else CYAN
             self.tech_panel(frame, (x1, y1, x2, y2), border, fill=(14, 18, 28), alpha=0.82, line=3 if selected else 2)
             self.draw_text(frame, label.upper(), ((x1 + x2) // 2, y1 + 82), WHITE, size=32, family="display", anchor="ma", stroke=1)
+            self.click_regions.append(((x1, y1, x2, y2), "hub_open", idx))
         arena = self.current_arena_for_ui()
         self.tech_panel(frame, (40, h - 176, 540, h - 76), CYAN, fill=(10, 14, 24), alpha=0.76)
         self.draw_text(frame, f"UP NEXT: {arena['name'].upper()}", (56, h - 140), WHITE, size=28, family="display")
         self.draw_text(frame, arena["challenge"], (56, h - 104), SOFT, size=18, family="body")
-        self.draw_text(frame, "Slip Left / Right to move. Left Uppercut confirm. Right Uppercut back.", (40, h - 46), WHITE, size=20, family="body", stroke=1)
+        self.draw_text(frame, "Slip Left / Right to move. Left Uppercut or mouse click to enter. Q returns to the previous menu.", (40, h - 46), WHITE, size=20, family="body", stroke=1)
 
     def draw_arena_map(self, frame):
         h, w = frame.shape[:2]
+        self.click_regions = []
         self.draw_text(frame, "FIGHT MAP", (40, 64), WHITE, size=42, family="display", stroke=1)
         self.draw_text(frame, "Move through the full ladder one arena at a time.", (40, 98), SOFT, size=20, family="body")
+        self.draw_button(frame, (w - 410, 34, w - 220, 86), "Enter Fight", GREEN, "arena_enter")
+        self.draw_button(frame, (w - 200, 34, w - 40, 86), "Back", RED, "menu_back")
         arena = CAREER_ARENAS[self.selected_arena_index]
         top_card = (40, 120, w - 40, 308)
         self.tech_panel(frame, top_card, GOLD, fill=(10, 14, 24), alpha=0.84, line=2)
@@ -3638,6 +3736,7 @@ class BoxingCommandArena:
             self.draw_text(frame, arena["scene"], (x, y + 80), SOFT, size=14, family="body", anchor="ma")
             status = "READY" if self.career.can_enter(arena) else "LOCKED" if not unlocked else f"Need ${arena['entry_fee']}"
             self.draw_text(frame, status, (x, y - 42), color, size=14, family="mono", anchor="ma")
+            self.click_regions.append(((x - 48, y - 48, x + 48, y + 48), "arena_select", idx))
             if idx < len(CAREER_ARENAS) - 1:
                 nx, ny = node_points[idx + 1]
                 curve = self.bezier_points(
@@ -3645,13 +3744,15 @@ class BoxingCommandArena:
                     samples=20,
                 )
                 cv2.polylines(frame, [np.array(curve, dtype=np.int32)], False, CYAN, 2, cv2.LINE_AA)
-        self.draw_text(frame, "Slip Left / Right to choose arena. Left Uppercut enter fight. Right Uppercut back.", (40, h - 46), WHITE, size=20, family="body", stroke=1)
+        self.draw_text(frame, "Slip Left / Right to choose arena. Click a node to select it. Q or Back returns to the previous menu.", (40, h - 46), WHITE, size=20, family="body", stroke=1)
 
     def draw_locker_room(self, frame):
         h, w = frame.shape[:2]
+        self.click_regions = []
         self.draw_text(frame, "LOCKER ROOM", (40, 64), WHITE, size=42, family="display", stroke=1)
         belt_text = "STATE BELT: OWNED" if self.career.state_belt_won else "STATE BELT: LOCKED"
         self.draw_text(frame, f"Cash ${self.career.cash}   Sponsor bonuses {self.career.completed_tasks}   {belt_text}", (40, 98), GOLD, size=20, family="body")
+        self.draw_button(frame, (w - 200, 34, w - 40, 86), "Back", RED, "menu_back")
         panel_x1, panel_y1 = 40, 140
         self.tech_panel(frame, (panel_x1, panel_y1, w - 40, h - 70), CYAN, fill=(16, 18, 28), alpha=0.82)
         self.draw_technique_cards(frame, 78, 154, card_w=254, card_h=86, gap=18)
@@ -3691,12 +3792,14 @@ class BoxingCommandArena:
             preview = self.resize_cover(glove_sheet, 220, 126)
             ph, pw = preview.shape[:2]
             frame[panel_y1 + 26 : panel_y1 + 26 + ph, w - 280 : w - 280 + pw] = preview
-        self.draw_text(frame, "Right Hook to go back. Open Training from the hub to start drills.", (50, h - 34), WHITE, size=20, family="body", stroke=1)
+        self.draw_text(frame, "Q or Back returns to the previous menu. Open Training from the hub to start drills.", (50, h - 34), WHITE, size=20, family="body", stroke=1)
 
     def draw_training_menu(self, frame):
         h, w = frame.shape[:2]
+        self.click_regions = []
         self.draw_text(frame, "TRAINING GYM", (40, 64), WHITE, size=42, family="display", stroke=1)
         self.draw_text(frame, f"Cash ${self.career.cash}", (40, 98), GOLD, size=20, family="body")
+        self.draw_button(frame, (w - 200, 34, w - 40, 86), "Back", RED, "menu_back")
         card_w = 320
         gap = 26
         total_w = card_w * 3 + gap * 2
@@ -3720,8 +3823,9 @@ class BoxingCommandArena:
             self.draw_text(frame, f"Value {self.career.stats[stat_key]:.2f}", (x1 + 20, y1 + 68), GOLD, size=20, family="body")
             self.draw_text(frame, f"Cost ${cost}", (x1 + 20, y1 + 96), CYAN, size=18, family="body")
             self.draw_text_block(frame, [descriptions[stat_key]], x1 + 20, y1 + 126, size=17, family="body", color=SOFT, line_gap=8)
+            self.click_regions.append(((x1, y1, x2, y2), "training_start", idx))
         self.draw_technique_cards(frame, start_x, 420, card_w=220, card_h=128, gap=24)
-        self.draw_text(frame, "Slip Left / Right to select. Left Hook start drill. Right Hook back.", (40, h - 46), WHITE, size=20, family="body", stroke=1)
+        self.draw_text(frame, "Slip Left / Right to select. Click a card to start. Q or Back returns to the previous menu.", (40, h - 46), WHITE, size=20, family="body", stroke=1)
 
     def draw_training_overlay(self, frame):
         if self.app_state != "training" or self.training_mode is None:
@@ -3760,6 +3864,7 @@ class BoxingCommandArena:
                 break
 
             now = time.time()
+            self.consume_pending_upload()
             if not self.paused:
                 self.update_stamina(now)
             frame = cv2.flip(frame, 1)
@@ -3878,26 +3983,17 @@ class BoxingCommandArena:
             key = cv2.waitKey(1) & 0xFF
             if self.app_state == "profile_fighters":
                 if key in (ord("q"), 27):
-                    self.crop_editor = None
-                    self.app_state = "hub"
+                    self.navigate_back()
                     continue
                 self.handle_profile_key(key)
             if key == ord("p") and self.app_state in ("fight", "training"):
                 self.paused = not self.paused
-            if key == ord("q") and self.app_state in ("hub", "arena_map", "locker", "training_menu", "profile_fighters", "name_entry"):
-                if self.app_state == "profile_fighters":
-                    self.crop_editor = None
-                    self.app_state = "hub"
+            if key == ord("q"):
+                if self.app_state == "name_entry":
+                    break
+                if self.navigate_back():
                     continue
                 break
-            if key == ord("q") and self.app_state == "fight":
-                self.reset_match()
-                self.app_state = "arena_map"
-                continue
-            if key == ord("q") and self.app_state == "training":
-                self.finish_training()
-                self.app_state = "training_menu"
-                continue
             if key == ord("r"):
                 self.reset_match()
                 self.app_state = "hub"
