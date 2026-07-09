@@ -129,6 +129,46 @@ const MOVES = {
   duck: { id: "duck", label: "DUCK", type: "defense", hint: "Squat down to dodge a hook." },
 };
 
+const PUNCH_FLOW = {
+  straight: { recovery: 220, cancel: 120, cost: 0.82 },
+  hook: { recovery: 360, cancel: 260, cost: 1.08 },
+  uppercut: { recovery: 480, cancel: 400, cost: 1.24 },
+};
+const INPUT_BUFFER_EARLY_MS = 170;
+const INPUT_BUFFER_HOLD_MS = 210;
+
+const PUNCH_CANCELS = {
+  straight: new Set(["straight", "hook", "uppercut"]),
+  hook: new Set(["uppercut"]),
+  uppercut: new Set(),
+};
+
+const COMBO_RECIPES = [
+  { moves: ["left_straight", "right_hook", "left_uppercut"], label: "CROSS-HOOK-RISE", bonus: 3 },
+  { moves: ["right_straight", "left_hook", "right_uppercut"], label: "CROSS-HOOK-RISE", bonus: 3 },
+  { moves: ["left_straight", "right_straight", "left_hook"], label: "ONE-TWO-HOOK", bonus: 2 },
+  { moves: ["right_straight", "left_straight", "right_hook"], label: "ONE-TWO-HOOK", bonus: 2 },
+  { moves: ["left_straight", "right_straight", "left_uppercut"], label: "ONE-TWO-RISE", bonus: 2 },
+  { moves: ["right_straight", "left_straight", "right_uppercut"], label: "ONE-TWO-RISE", bonus: 2 },
+  { moves: ["left_straight", "left_straight", "right_straight"], label: "DOUBLE JAB CROSS", bonus: 2 },
+  { moves: ["right_straight", "right_straight", "left_straight"], label: "DOUBLE JAB CROSS", bonus: 2 },
+  { moves: ["left_hook", "right_uppercut"], label: "HOOK-TO-UPPERCUT", bonus: 2 },
+  { moves: ["right_hook", "left_uppercut"], label: "HOOK-TO-UPPERCUT", bonus: 2 },
+  { moves: ["left_straight", "right_uppercut"], label: "JAB-UPPERCUT", bonus: 1 },
+  { moves: ["right_straight", "left_uppercut"], label: "JAB-UPPERCUT", bonus: 1 },
+  { moves: ["left_hook", "right_hook"], label: "HOOK PAIR", bonus: 1 },
+  { moves: ["right_hook", "left_hook"], label: "HOOK PAIR", bonus: 1 },
+  { moves: ["left_straight", "right_straight"], label: "ONE-TWO", bonus: 1 },
+  { moves: ["right_straight", "left_straight"], label: "ONE-TWO", bonus: 1 },
+];
+const COMBO_HINTS = ["ONE-TWO", "ONE-TWO-HOOK", "DOUBLE JAB CROSS", "HOOK-TO-UPPERCUT"];
+
+const BLOCK_RULES = {
+  wide_gate: { label: "WIDE GATE", hint: "Fire straight down the middle.", counterMoves: ["left_straight", "right_straight"], counter: "straight" },
+  tight_shell: { label: "TIGHT SHELL", hint: "Wrap around with a hook.", counterMoves: ["left_hook", "right_hook"], counter: "hook" },
+  elbows_high: { label: "ELBOWS HIGH", hint: "Snap a straight over the shelf.", counterMoves: ["left_straight", "right_straight"], counter: "straight" },
+};
+
 const OFFENSE_MOVE_IDS = Object.values(MOVES)
   .filter((move) => move.type === "offense")
   .map((move) => move.id);
@@ -526,7 +566,7 @@ function renderHubScreen() {
   `;
   return renderScene("CAREER MAP", "Choose your next stop in the boxing career.", content, {
     screen: "hub",
-    eyebrow: "Gesture Boxing",
+    eyebrow: "Home",
     actions: `
       <button class="tech-button red" data-ui="reset-save">Reset Save</button>
     `,
@@ -578,11 +618,11 @@ function renderFightScreen() {
       ${renderCameraStage("fight")}
     </div>
   `;
-  return renderScene("FIGHT MAP", "Move through the ladder one arena at a time.", content, {
+  return renderScene("FIGHT MAP", "Choose an arena, start the camera, then enter the fight.", content, {
     screen: "fight",
     actions: `
       <button class="tech-button green" data-camera="toggle">${runtime.cameraActive ? "Stop Camera" : "Start Camera"}</button>
-      <button class="tech-button gold" data-action="start-fight">Enter Fight</button>
+      <button class="tech-button gold" data-action="start-fight">Start Fight</button>
       <button class="tech-button red" data-ui="go-back">Back</button>
     `,
   });
@@ -629,6 +669,8 @@ function renderTrainingScreen() {
 }
 
 function renderCameraStage(mode) {
+  const opponent = mode === "fight" ? currentArenaOpponent() : null;
+  const bruise = Math.min(1, runtime.activeSession?.opponentBruise ?? 0);
   return `
     <div class="camera-shell">
       <div class="camera-stage">
@@ -639,6 +681,14 @@ function renderCameraStage(mode) {
           <div class="camera-message" id="cameraStatus">${escapeHtml(runtime.statusText)}</div>
         </div>
       </div>
+      ${
+        mode === "fight" && opponent
+          ? `<div class="fight-rival-card" style="--bruise:${bruise}">
+              <div class="bruised-avatar">${avatarMarkup(opponentAvatar(opponent), opponent.name)}</div>
+              <div><span class="eyebrow">Rival</span><strong>${escapeHtml(opponent.name)}</strong><small>${escapeHtml(opponent.title)}</small></div>
+            </div>`
+          : ""
+      }
       <div class="camera-hud">
         <div class="camera-hud-row">
           <span class="eyebrow">Prompt</span>
@@ -649,6 +699,11 @@ function renderCameraStage(mode) {
           <strong id="feedbackLabel">${escapeHtml(runtime.lastMoveFeedback || "Stand centered so the camera sees your head, both hands, and hips.")}</strong>
         </div>
         <div class="session-stats" id="sessionStats">${renderSessionStats(mode)}</div>
+        ${
+          mode === "fight"
+            ? `<div class="combo-hint-strip"><span class="eyebrow">Combo Routes</span>${COMBO_HINTS.map((hint) => `<strong>${escapeHtml(hint)}</strong>`).join("")}</div>`
+            : ""
+        }
       </div>
     </div>
   `;
@@ -659,7 +714,7 @@ function renderSessionStats(mode) {
     return `
       <div class="stat-card"><span class="eyebrow">Player HP</span><strong>${runtime.activeSession?.playerHp ?? "-"}</strong></div>
       <div class="stat-card"><span class="eyebrow">Enemy HP</span><strong>${runtime.activeSession?.enemyHp ?? "-"}</strong></div>
-      <div class="stat-card"><span class="eyebrow">Combo</span><strong>${runtime.activeSession?.combo ?? 0}</strong></div>
+      <div class="stat-card"><span class="eyebrow">Combo</span><strong>${runtime.activeSession?.combo ?? 0} / ${runtime.activeSession?.comboPeak ?? 0}</strong></div>
     `;
   }
   return `
@@ -864,6 +919,11 @@ function bindGlobalInputs() {
   );
   root.querySelectorAll("[data-arena]").forEach((button) =>
     button.addEventListener("click", () => {
+      if (runtime.activeSession?.running) {
+        runtime.statusText = "Arena is locked while a fight is running.";
+        updateRuntimePanel();
+        return;
+      }
       state.selectedArenaId = button.dataset.arena;
       saveState();
       render();
@@ -929,8 +989,8 @@ function bindInput(id, setter) {
   el.addEventListener("input", (event) => {
     setter(event.target.value);
     saveState();
-    render();
   });
+  el.addEventListener("change", () => render());
 }
 
 function bindSlider(id, setter) {
@@ -1016,13 +1076,17 @@ function updateRuntimePanel() {
   const prompt = document.getElementById("promptLabel");
   const feedback = document.getElementById("feedbackLabel");
   const stats = document.getElementById("sessionStats");
+  const rival = document.querySelector(".fight-rival-card");
   if (status) status.textContent = runtime.statusText;
   if (prompt) {
     if (!runtime.activeSession?.running) {
       prompt.textContent = "No session running";
     } else {
-      const promptLabel = runtime.activeSession.prompt ? MOVES[runtime.activeSession.prompt.expectedMoveId].label : "Get ready";
-      prompt.textContent = `${runtime.activeSession.mode.toUpperCase()} · ${promptLabel}`;
+      const session = runtime.activeSession;
+      const promptLabel = session.prompt ? MOVES[session.prompt.expectedMoveId].label : "Get ready";
+      const counter = session.counterWindowUntil && performance.now() < session.counterWindowUntil ? ` · COUNTER ${String(session.counterFamily || "any").toUpperCase()}` : "";
+      const queued = session.bufferedPunch ? ` · QUEUED ${MOVES[session.bufferedPunch.moveId].label}` : "";
+      prompt.textContent = `${session.mode.toUpperCase()} · ${promptLabel}${counter}${queued}`;
     }
   }
   if (feedback) {
@@ -1030,6 +1094,9 @@ function updateRuntimePanel() {
   }
   if (stats) {
     stats.innerHTML = renderSessionStats(state.screen === "training" ? "training" : "fight");
+  }
+  if (rival && runtime.activeSession?.mode === "fight") {
+    rival.style.setProperty("--bruise", String(Math.min(1, runtime.activeSession.opponentBruise || 0)));
   }
 }
 
@@ -1200,20 +1267,29 @@ function drawPoseScene(results) {
   }
 
   if (runtime.activeSession?.running && runtime.activeSession.prompt) {
+    const session = runtime.activeSession;
+    const prompt = session.prompt;
     ctx.fillStyle = "rgba(7, 17, 31, 0.82)";
-    ctx.fillRect(24, 24, 320, 110);
-    ctx.strokeStyle = runtime.activeSession.prompt.type === "defense" ? "#fb7185" : "#facc15";
+    ctx.fillRect(24, 24, 390, 136);
+    ctx.strokeStyle = prompt.type === "defense" ? "#fb7185" : "#facc15";
     ctx.lineWidth = 2;
-    ctx.strokeRect(24, 24, 320, 110);
+    ctx.strokeRect(24, 24, 390, 136);
     ctx.fillStyle = "#67e8f9";
     ctx.font = "18px Rajdhani";
-    ctx.fillText(runtime.activeSession.mode === "fight" ? "LIVE PROMPT" : "TRAINING PROMPT", 42, 54);
+    ctx.fillText(session.mode === "fight" ? `ROUND ${session.playerRounds ?? 0}-${session.enemyRounds ?? 0}` : "TRAINING PROMPT", 42, 54);
     ctx.fillStyle = "#f5fbff";
     ctx.font = "36px Rajdhani";
-    ctx.fillText(MOVES[runtime.activeSession.prompt.expectedMoveId].label, 42, 92);
+    ctx.fillText(MOVES[prompt.expectedMoveId].label, 42, 92);
     ctx.fillStyle = "#9bb3c8";
     ctx.font = "17px Space Grotesk";
-    ctx.fillText(MOVES[runtime.activeSession.prompt.expectedMoveId].hint, 42, 118);
+    ctx.fillText(prompt.hint || MOVES[prompt.expectedMoveId].hint, 42, 118);
+    const remaining = Math.max(0, session.promptExpiresAt - performance.now());
+    const progress = 1 - remaining / Math.max(1, prompt.windowMs || 1000);
+    ctx.strokeStyle = remaining > 700 ? "#22c55e" : remaining > 320 ? "#facc15" : "#fb7185";
+    ctx.lineWidth = 8;
+    ctx.beginPath();
+    ctx.arc(362, 92, 34, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
+    ctx.stroke();
   }
 }
 
@@ -1319,11 +1395,16 @@ function summarizeWristMotion(hand, poseData) {
 
   let pathLen = 0;
   let peakSpeed = 0;
+  let peakIndex = 0;
   for (let index = 1; index < points.length; index += 1) {
     const segment = distance2D(points[index - 1], points[index]);
     pathLen += segment / shoulderWidth;
     const dt = Math.max(1, times[index] - times[index - 1]) / 1000;
-    peakSpeed = Math.max(peakSpeed, segment / shoulderWidth / dt);
+    const speed = segment / shoulderWidth / dt;
+    if (speed > peakSpeed) {
+      peakSpeed = speed;
+      peakIndex = index - 1;
+    }
   }
 
   const shoulder = hand === "left" ? poseData.l_shoulder : poseData.r_shoulder;
@@ -1343,6 +1424,8 @@ function summarizeWristMotion(hand, poseData) {
     path_len: pathLen,
     net_displacement: distance2D(start, end) / shoulderWidth,
     peak_speed: peakSpeed,
+    peak_index: peakIndex,
+    phase_ok: peakIndex > 0 && peakIndex < points.length - 2,
     reach_x: (wrist[0] - shoulder[0]) / shoulderWidth,
     end_hand_height: (shoulder[1] - end[1]) / torsoHeight,
     start_hand_height: (shoulder[1] - start[1]) / torsoHeight,
@@ -1359,6 +1442,7 @@ function motionIsActive(motion, strict = false) {
   const minDisplacement = strict ? 0.17 : 0.13;
   const minPeakSpeed = strict ? 1.95 : 1.34;
   const minEnergy = strict ? 0.46 : 0.31;
+  if (strict && !motion.phase_ok) return false;
   return (
     motion.path_len >= minPath &&
     motion.net_displacement >= minDisplacement &&
@@ -1404,6 +1488,112 @@ function detectMove(moveId, poseData, defense) {
   return false;
 }
 
+function offenseFamily(moveId) {
+  if (moveId.endsWith("hook")) return "hook";
+  if (moveId.endsWith("uppercut")) return "uppercut";
+  return "straight";
+}
+
+function arenaById(arenaId) {
+  return ARENAS.find((arena) => arena.id === arenaId) || ARENAS[0];
+}
+
+function staminaQuality(session) {
+  return clamp((session.playerStamina ?? 1) / Math.max(1, session.playerHp || session.playerMaxHp || 1), 0.35, 1);
+}
+
+function punchTuning(session, moveId) {
+  const base = PUNCH_FLOW[offenseFamily(moveId)] || PUNCH_FLOW.straight;
+  const fatigue = 1 + (1 - staminaQuality(session)) * 0.65;
+  return {
+    recovery: base.recovery * fatigue,
+    cancel: base.cancel * fatigue,
+    cost: base.cost,
+  };
+}
+
+function canCancelPunch(previousId, nextId) {
+  if (!previousId) return false;
+  return PUNCH_CANCELS[offenseFamily(previousId)]?.has(offenseFamily(nextId)) || false;
+}
+
+function canReleasePunch(session, moveId, now) {
+  if (now >= (session.playerRecoveryUntil || 0)) return true;
+  return now >= (session.playerCancelAfter || 0) && canCancelPunch(session.lastPlayerMoveId, moveId);
+}
+
+function detectOrBufferPunch(session, moveIds, poseData, defense, now) {
+  const buffered = session.bufferedPunch;
+  if (buffered && now <= buffered.expiresAt && moveIds.includes(buffered.moveId) && canReleasePunch(session, buffered.moveId, now)) {
+    session.bufferedPunch = null;
+    return buffered.moveId;
+  }
+  if (buffered && now > buffered.expiresAt) {
+    session.bufferedPunch = null;
+  }
+  for (const moveId of moveIds) {
+    if (!detectMove(moveId, poseData, defense)) continue;
+    const tuning = punchTuning(session, moveId);
+    if ((session.playerStamina ?? 0) < tuning.cost) {
+      runtime.lastMoveFeedback = "Low stamina. Guard or move to recover.";
+      return "";
+    }
+    if (canReleasePunch(session, moveId, now)) {
+      return moveId;
+    }
+    if ((session.playerRecoveryUntil || 0) - now <= INPUT_BUFFER_EARLY_MS) {
+      session.bufferedPunch = { moveId, storedAt: now, expiresAt: now + INPUT_BUFFER_HOLD_MS };
+      runtime.lastMoveFeedback = `${MOVES[moveId].label} queued.`;
+    }
+    return "";
+  }
+  return "";
+}
+
+function commitPunch(session, moveId, now) {
+  const tuning = punchTuning(session, moveId);
+  session.playerStamina = Math.max(0, (session.playerStamina ?? 0) - tuning.cost);
+  session.lastDetectionAt = now;
+  session.lastPlayerMoveId = moveId;
+  session.playerCancelAfter = now + tuning.cancel;
+  session.playerRecoveryUntil = now + tuning.recovery;
+}
+
+function comboRecipeBonus(session, moveId) {
+  const ids = [...(session.recentMoves || []), moveId].slice(-4);
+  for (const recipe of COMBO_RECIPES) {
+    if (ids.length >= recipe.moves.length && recipe.moves.every((id, idx) => ids[ids.length - recipe.moves.length + idx] === id)) {
+      return recipe;
+    }
+  }
+  const lastFamily = session.recentMoves?.length ? offenseFamily(session.recentMoves[session.recentMoves.length - 1]) : "";
+  const family = offenseFamily(moveId);
+  return { label: "", bonus: lastFamily && lastFamily !== family ? 1 : 0 };
+}
+
+function chooseEnemyAttack(session) {
+  const rank = arenaRank(session.arenaId);
+  const families = ["straight"];
+  if (Math.random() < 0.45 + rank * 0.06) families.push("hook");
+  if (rank >= 2 && Math.random() < 0.48) families.push("uppercut");
+  const family = sample(families);
+  if (family === "hook") {
+    return { family, attackId: sample(["left_hook", "right_hook"]), expectedMoveId: "duck", fullDamage: rank < 4 ? 2 : 3 };
+  }
+  if (family === "uppercut") {
+    return { family, attackId: sample(["left_uppercut", "right_uppercut"]), expectedMoveId: "guard", fullDamage: rank < 4 ? 2 : 3 };
+  }
+  const attackId = sample(["left_straight", "right_straight"]);
+  return { family, attackId, expectedMoveId: attackId === "left_straight" ? "slip_right" : "slip_left", fullDamage: rank < 3 ? 1 : 2 };
+}
+
+function chooseEnemyBlock(session) {
+  const rank = arenaRank(session.arenaId);
+  if (rank < 1 && Math.random() > 0.25) return null;
+  const styles = rank >= 2 ? ["wide_gate", "tight_shell", "elbows_high"] : ["wide_gate", "tight_shell"];
+  return BLOCK_RULES[sample(styles)];
+}
+
 function beginFightSession() {
   if (!runtime.cameraActive) {
     runtime.statusText = "Start camera first.";
@@ -1432,13 +1622,31 @@ function beginFightSession() {
     prompt: null,
     promptExpiresAt: 0,
     nextPromptAt: performance.now() + 1200,
+    promptQueue: [],
     playerHp: MAX_HP + Math.round(state.career.stats.stamina * 0.45),
     enemyHp: MAX_HP + arena.enemyHpBonus + 6 + arenaRank(arena.id) * 4,
+    playerMaxHp: MAX_HP + Math.round(state.career.stats.stamina * 0.45),
+    enemyMaxHp: MAX_HP + arena.enemyHpBonus + 6 + arenaRank(arena.id) * 4,
+    playerStamina: MAX_HP + Math.round(state.career.stats.stamina * 0.45),
+    enemyStamina: MAX_HP + arena.enemyHpBonus + 6 + arenaRank(arena.id) * 4,
+    playerRounds: 0,
+    enemyRounds: 0,
+    roundsNeeded: arenaRank(arena.id) < 2 ? 2 : 3,
+    knockdown: null,
     combo: 0,
+    comboPeak: 0,
+    recentMoves: [],
     landedHits: 0,
     thrown: 0,
     taken: 0,
     lastDetectionAt: 0,
+    playerRecoveryUntil: 0,
+    playerCancelAfter: 0,
+    lastPlayerMoveId: "",
+    bufferedPunch: null,
+    counterWindowUntil: 0,
+    counterFamily: "",
+    opponentBruise: 0,
   };
   runtime.lastMoveFeedback = "Fight started. Wait for the first prompt.";
   runtime.statusText = `Live fight started in ${arena.name}.`;
@@ -1491,6 +1699,7 @@ function processSession(poseData, defense) {
     return;
   }
   const now = performance.now();
+  updateFightStamina(session, now);
 
   if (session.mode === "training") {
     session.remainingSeconds = Math.max(0, Math.ceil((session.endsAt - now) / 1000));
@@ -1500,25 +1709,50 @@ function processSession(poseData, defense) {
     }
   }
 
+  if (session.mode === "fight" && session.knockdown) {
+    if (now >= session.knockdown.endsAt) {
+      resolveKnockdown(session);
+    }
+    return;
+  }
+
   if (!session.prompt && now >= session.nextPromptAt) {
     session.prompt = makePrompt(session);
     session.promptExpiresAt = now + session.prompt.windowMs;
-    runtime.lastMoveFeedback = MOVES[session.prompt.expectedMoveId].hint;
+    runtime.lastMoveFeedback = session.prompt.hint || MOVES[session.prompt.expectedMoveId].hint;
   }
 
   if (!session.prompt) {
     return;
   }
 
-  if (now - session.lastDetectionAt > 220 && detectMove(session.prompt.expectedMoveId, poseData, defense)) {
+  if (session.mode === "fight" && session.prompt.type === "offense") {
+    const validMoves = session.prompt.validMoveIds || [session.prompt.expectedMoveId];
+    const moveId = detectOrBufferPunch(session, validMoves, poseData, defense, now);
+    if (moveId) {
+      commitPunch(session, moveId, now);
+      resolvePrompt(true, moveId);
+      return;
+    }
+  } else if (now - session.lastDetectionAt > 220 && detectMove(session.prompt.expectedMoveId, poseData, defense)) {
     session.lastDetectionAt = now;
-    resolvePrompt(true);
+    resolvePrompt(true, session.prompt.expectedMoveId);
     return;
   }
 
   if (now > session.promptExpiresAt) {
     resolvePrompt(false);
   }
+}
+
+function updateFightStamina(session, now) {
+  if (session.mode !== "fight") return;
+  const last = session.lastStaminaAt || now;
+  const dt = Math.max(0, now - last) / 1000;
+  session.lastStaminaAt = now;
+  if (dt <= 0) return;
+  session.playerStamina = Math.min(Math.max(1, session.playerHp), (session.playerStamina ?? session.playerHp) + dt * 0.8);
+  session.enemyStamina = Math.min(Math.max(1, session.enemyHp), (session.enemyStamina ?? session.enemyHp) + dt * 0.72);
 }
 
 function makePrompt(session) {
@@ -1532,24 +1766,73 @@ function makePrompt(session) {
     };
   }
 
+  if (session.promptQueue?.length) {
+    return session.promptQueue.shift();
+  }
   const rank = arenaRank(session.arenaId);
+  const arena = arenaById(session.arenaId);
   const offenseChance = 0.62 - rank * 0.07;
   if (Math.random() < offenseChance) {
+    const block = chooseEnemyBlock(session);
+    const validMoveIds = block ? block.counterMoves : OFFENSE_MOVE_IDS;
+    const expectedMoveId = block ? sample(block.counterMoves) : sample(OFFENSE_MOVE_IDS);
+    maybeQueueCombo(session, "offense");
     return {
       type: "offense",
-      expectedMoveId: sample(OFFENSE_MOVE_IDS),
-      windowMs: Math.max(900, 1600 * selectedArena().speedScale),
+      expectedMoveId,
+      validMoveIds,
+      enemyBlock: block,
+      hint: block ? `${block.label}: ${block.hint}` : MOVES[expectedMoveId].hint,
+      windowMs: Math.max(900, 1600 * arena.speedScale),
     };
   }
-  const expectedMoveId = sample(["guard", "slip_left", "slip_right", "duck"]);
+  const attack = chooseEnemyAttack(session);
+  maybeQueueCombo(session, "defense");
   return {
     type: "defense",
-    expectedMoveId,
-    windowMs: Math.max(800, 1450 * selectedArena().speedScale),
+    expectedMoveId: attack.expectedMoveId,
+    enemyAttackId: attack.attackId,
+    family: attack.family,
+    fullDamage: attack.fullDamage,
+    hint: `${MOVES[attack.attackId].label} incoming. Answer with ${MOVES[attack.expectedMoveId].label}.`,
+    windowMs: Math.max(800, 1450 * arena.speedScale),
   };
 }
 
-function resolvePrompt(success) {
+function maybeQueueCombo(session, baseType) {
+  const rank = arenaRank(session.arenaId);
+  const chance = rank === 0 ? 0 : 0.36 + rank * 0.08;
+  if (Math.random() > chance) return;
+  const length = rank < 3 ? 1 : 2;
+  for (let index = 0; index < length; index += 1) {
+    if (baseType === "defense") {
+      const attack = chooseEnemyAttack(session);
+      session.promptQueue.push({
+        type: "defense",
+        expectedMoveId: attack.expectedMoveId,
+        enemyAttackId: attack.attackId,
+        family: attack.family,
+        fullDamage: attack.fullDamage,
+        hint: `${MOVES[attack.attackId].label} chained. ${MOVES[attack.expectedMoveId].label}!`,
+        windowMs: Math.max(780, 1300 * arenaById(session.arenaId).speedScale),
+      });
+    } else {
+      const block = chooseEnemyBlock(session);
+      const validMoveIds = block ? block.counterMoves : OFFENSE_MOVE_IDS;
+      const expectedMoveId = block ? sample(block.counterMoves) : sample(OFFENSE_MOVE_IDS);
+      session.promptQueue.push({
+        type: "offense",
+        expectedMoveId,
+        validMoveIds,
+        enemyBlock: block,
+        hint: block ? `${block.label}: ${block.hint}` : MOVES[expectedMoveId].hint,
+        windowMs: Math.max(850, 1400 * arenaById(session.arenaId).speedScale),
+      });
+    }
+  }
+}
+
+function resolvePrompt(success, resolvedMoveId = "") {
   const session = runtime.activeSession;
   if (!session?.prompt) {
     return;
@@ -1566,15 +1849,28 @@ function resolvePrompt(success) {
       runtime.lastMoveFeedback = `${MOVES[prompt.expectedMoveId].label} missed.`;
     }
   } else if (success) {
-    session.combo += 1;
     if (prompt.type === "offense") {
+      const moveId = resolvedMoveId || prompt.expectedMoveId;
+      const family = offenseFamily(moveId);
+      const counter = performance.now() < (session.counterWindowUntil || 0) && (!session.counterFamily || session.counterFamily === family || arenaRank(session.arenaId) < 2);
+      const recipe = comboRecipeBonus(session, moveId);
+      session.combo += 1;
+      session.comboPeak = Math.max(session.comboPeak || 0, session.combo);
       session.thrown += 1;
       session.landedHits += 1;
-      const damage = 1 + Number(state.career.stats.power > 14) + Number(session.combo >= 3);
+      let damage = 1 + Number(state.career.stats.power > 14) + Number(session.combo >= 3) + (recipe.bonus || 0) + Number(counter);
+      damage = Math.max(1, Math.round(damage * (0.72 + staminaQuality(session) * 0.28)));
       session.enemyHp = Math.max(0, session.enemyHp - damage);
-      runtime.lastMoveFeedback = `${MOVES[prompt.expectedMoveId].label} landed for ${damage} damage.`;
+      session.opponentBruise = Math.min(1, (session.opponentBruise || 0) + damage * 0.06 + Number(counter) * 0.04);
+      session.recentMoves = [...(session.recentMoves || []), moveId].slice(-5);
+      runtime.lastMoveFeedback = `${MOVES[moveId].label} ${counter ? "countered" : "landed"} for ${damage} damage${recipe.label ? ` · ${recipe.label}` : ""}.`;
+      session.counterWindowUntil = 0;
+      session.counterFamily = "";
     } else {
-      runtime.lastMoveFeedback = `${MOVES[prompt.expectedMoveId].label} defended clean.`;
+      const counterFamily = { straight: "hook", hook: "uppercut", uppercut: "straight" }[prompt.family || "straight"] || "straight";
+      session.counterWindowUntil = performance.now() + 760;
+      session.counterFamily = counterFamily;
+      runtime.lastMoveFeedback = `${MOVES[prompt.expectedMoveId].label} defended clean. Counter with ${counterFamily.toUpperCase()}.`;
     }
   } else {
     session.combo = 0;
@@ -1582,10 +1878,10 @@ function resolvePrompt(success) {
       session.thrown += 1;
       runtime.lastMoveFeedback = `${MOVES[prompt.expectedMoveId].label} did not land in time.`;
     } else {
-      const damage = 2 + Number(arenaRank(session.arenaId) >= 2);
+      const damage = prompt.fullDamage || (2 + Number(arenaRank(session.arenaId) >= 2));
       session.playerHp = Math.max(0, session.playerHp - damage);
       session.taken += 1;
-      runtime.lastMoveFeedback = `${MOVES[prompt.expectedMoveId].label} late. You took ${damage} damage.`;
+      runtime.lastMoveFeedback = `${MOVES[prompt.enemyAttackId || prompt.expectedMoveId].label} landed. You took ${damage} damage.`;
     }
   }
 
@@ -1593,21 +1889,59 @@ function resolvePrompt(success) {
   session.nextPromptAt = performance.now() + (session.mode === "fight" ? 550 : 380);
 
   if (session.mode === "fight" && (session.playerHp <= 0 || session.enemyHp <= 0)) {
-    finishFightSession(session.enemyHp <= 0);
+    startKnockdown(session, session.enemyHp <= 0 ? "opponent" : "player");
   }
+}
+
+function startKnockdown(session, fighter) {
+  session.knockdown = {
+    fighter,
+    startedAt: performance.now(),
+    endsAt: performance.now() + 3600,
+    comboSnapshot: session.combo,
+  };
+  session.prompt = null;
+  session.promptQueue = [];
+  session.combo = 0;
+  runtime.lastMoveFeedback = `${fighter === "opponent" ? "Rival" : "You"} down. Beat the count.`;
+}
+
+function resolveKnockdown(session) {
+  const fighter = session.knockdown?.fighter;
+  session.knockdown = null;
+  if (fighter === "opponent") {
+    session.playerRounds += 1;
+    if (session.playerRounds >= session.roundsNeeded) {
+      finishFightSession(true);
+      return;
+    }
+    session.enemyHp = Math.min(session.enemyMaxHp, 5);
+    session.enemyStamina = Math.min(session.enemyHp, 4);
+  } else {
+    session.enemyRounds += 1;
+    if (session.enemyRounds >= session.roundsNeeded) {
+      finishFightSession(false);
+      return;
+    }
+    session.playerHp = Math.min(session.playerMaxHp, 5);
+    session.playerStamina = Math.min(session.playerHp, 4);
+  }
+  session.nextPromptAt = performance.now() + 1200;
+  runtime.lastMoveFeedback = `Round continues. Score ${session.playerRounds}-${session.enemyRounds}.`;
 }
 
 function finishFightSession(won) {
   const session = runtime.activeSession;
-  const arena = selectedArena();
+  const arena = arenaById(session.arenaId);
   const opponent = findOpponent(session.opponentId) || currentArenaOpponent(arena.id);
   state.career.cash -= arena.entryFee + arena.upkeep;
   if (won) {
-    const payout = Math.round(arena.basePrize * (1 + session.landedHits * 0.06 + session.combo * 0.04));
+    const peak = session.comboPeak || session.combo || 0;
+    const payout = Math.round(arena.basePrize * (1 + session.landedHits * 0.06 + peak * 0.04));
     state.career.cash += payout;
-    state.career.points += Math.round(arena.basePrize * 0.65 + session.landedHits * 8 + session.combo * 5);
+    state.career.points += Math.round(arena.basePrize * 0.65 + session.landedHits * 8 + peak * 5);
     state.career.wins += 1;
-    state.career.sponsorCount += Number(session.combo >= 3);
+    state.career.sponsorCount += Number(peak >= 3);
     if (arena.id === "state") {
       state.career.stateBeltWon = true;
     }
@@ -1617,7 +1951,7 @@ function finishFightSession(won) {
       opponent: opponent?.name || "Rival",
       detail: "KO/TKO",
       payout,
-      combo: session.combo,
+      combo: peak,
     });
     runtime.lastMoveFeedback = `Fight won. Payout $${payout}.`;
   } else {
@@ -1629,7 +1963,7 @@ function finishFightSession(won) {
       opponent: opponent?.name || "Rival",
       detail: "Stopped",
       payout: 0,
-      combo: session.combo,
+      combo: session.comboPeak || session.combo || 0,
     });
     runtime.lastMoveFeedback = "Fight lost. Back to the map and train up.";
   }

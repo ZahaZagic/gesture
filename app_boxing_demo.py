@@ -89,6 +89,40 @@ BLOCK_COUNTER_RULES = {
         "hint": "Hands sit horizontal and lower. Snap a straight over the shelf.",
     },
 }
+PUNCH_FLOW = {
+    "straight": {"recovery": 0.22, "cancel": 0.12, "cost": 0.82},
+    "hook": {"recovery": 0.36, "cancel": 0.26, "cost": 1.08},
+    "uppercut": {"recovery": 0.48, "cancel": 0.40, "cost": 1.24},
+}
+INPUT_BUFFER_EARLY_WINDOW = 0.17
+INPUT_BUFFER_HOLD = 0.21
+PUNCH_CANCELS = {
+    "straight": {"straight", "hook", "uppercut"},
+    "hook": {"uppercut"},
+    "uppercut": set(),
+}
+COMBO_RECIPES = [
+    (("left_straight", "right_hook", "left_uppercut"), "CROSS-HOOK-RISE", 3),
+    (("right_straight", "left_hook", "right_uppercut"), "CROSS-HOOK-RISE", 3),
+    (("left_straight", "right_straight", "left_hook"), "ONE-TWO-HOOK", 2),
+    (("right_straight", "left_straight", "right_hook"), "ONE-TWO-HOOK", 2),
+    (("left_straight", "right_straight", "left_uppercut"), "ONE-TWO-RISE", 2),
+    (("right_straight", "left_straight", "right_uppercut"), "ONE-TWO-RISE", 2),
+    (("left_straight", "left_straight", "right_straight"), "DOUBLE JAB CROSS", 2),
+    (("right_straight", "right_straight", "left_straight"), "DOUBLE JAB CROSS", 2),
+    (("left_hook", "right_uppercut"), "HOOK-TO-UPPERCUT", 2),
+    (("right_hook", "left_uppercut"), "HOOK-TO-UPPERCUT", 2),
+    (("left_straight", "right_uppercut"), "JAB-UPPERCUT", 1),
+    (("right_straight", "left_uppercut"), "JAB-UPPERCUT", 1),
+    (("left_hook", "right_hook"), "HOOK PAIR", 1),
+    (("right_hook", "left_hook"), "HOOK PAIR", 1),
+    (("left_straight", "right_straight"), "ONE-TWO", 1),
+    (("right_straight", "left_straight"), "ONE-TWO", 1),
+]
+COMBO_HINTS = [
+    "Combo routes: ONE-TWO, ONE-TWO-HOOK, DOUBLE JAB CROSS.",
+    "Flow tip: straight -> hook -> uppercut can break a shell.",
+]
 
 
 class BoxingCommandArena:
@@ -143,6 +177,15 @@ class BoxingCommandArena:
         self.knockdown_state = None
         self.player_getup_meter = 0.0
         self.recent_player_moves = deque(maxlen=5)
+        self.buffered_punch = None
+        self.player_recovery_until = 0.0
+        self.player_cancel_after = 0.0
+        self.last_player_move_id = None
+        self.counter_window_until = 0.0
+        self.counter_family = None
+        self.combo_recipe_flash_until = 0.0
+        self.combo_recipe_label = ""
+        self.opponent_bruise_level = 0.0
         self.training_mode = None
         self.training_started_at = 0.0
         self.training_duration = 18.0
@@ -178,6 +221,15 @@ class BoxingCommandArena:
         self.match_winner = None
         self.combo_count = 0
         self.combo_until = 0.0
+        self.buffered_punch = None
+        self.player_recovery_until = 0.0
+        self.player_cancel_after = 0.0
+        self.last_player_move_id = None
+        self.counter_window_until = 0.0
+        self.counter_family = None
+        self.combo_recipe_flash_until = 0.0
+        self.combo_recipe_label = ""
+        self.opponent_bruise_level = 0.0
         self.impact_until = 0.0
         self.impact_move_id = None
         self.power_level = "LIGHT"
@@ -513,8 +565,75 @@ class BoxingCommandArena:
         head = self.custom_opponent_head()
         if head is None:
             return
+        head = self.bruised_head_rgba(head)
         scale = head_size / max(head.shape[1], 1)
         self.overlay_rgba(frame, head, center, scale=scale, angle=angle, alpha_scale=alpha_scale)
+
+    def bruised_head_rgba(self, head):
+        level = max(0.0, min(1.0, self.opponent_bruise_level))
+        if level <= 0.02:
+            return head
+        bruised = head.copy()
+        h, w = bruised.shape[:2]
+        overlay = np.zeros_like(bruised)
+        alpha = bruised[:, :, 3] if bruised.shape[2] == 4 else np.full((h, w), 255, dtype=np.uint8)
+
+        def bruise(cx, cy, rx, ry, color, strength):
+            center = (int(w * cx), int(h * cy))
+            axes = (max(2, int(w * rx)), max(2, int(h * ry)))
+            cv2.ellipse(overlay, center, axes, 0, 0, 360, color, -1, cv2.LINE_AA)
+            mask = np.zeros((h, w), dtype=np.uint8)
+            cv2.ellipse(mask, center, axes, 0, 0, 360, int(210 * strength), -1, cv2.LINE_AA)
+            mask[:] = np.minimum(mask, alpha)
+            return mask
+
+        masks = [
+            bruise(0.38, 0.43, 0.09, 0.045, (95, 42, 150, 0), min(1.0, level * 1.2)),
+            bruise(0.62, 0.43, 0.09, 0.045, (80, 32, 132, 0), min(1.0, level)),
+            bruise(0.50, 0.54, 0.055, 0.075, (45, 35, 180, 0), min(1.0, level * 0.9)),
+        ]
+        if level > 0.45:
+            masks.append(bruise(0.52, 0.68, 0.16, 0.035, (55, 45, 175, 0), min(1.0, (level - 0.35) * 1.4)))
+
+        for idx, mask in enumerate(masks):
+            color = overlay[:, :, :3]
+            blend = (mask.astype(np.float32) / 255.0 * (0.28 + level * 0.28))[:, :, None]
+            bruised[:, :, :3] = (bruised[:, :, :3].astype(np.float32) * (1.0 - blend) + color.astype(np.float32) * blend).astype(np.uint8)
+        if level > 0.25:
+            shine = np.zeros((h, w), dtype=np.uint8)
+            cv2.line(shine, (int(w * 0.49), int(h * 0.51)), (int(w * 0.55), int(h * 0.58)), int(210 * level), 3, cv2.LINE_AA)
+            red = np.zeros_like(bruised[:, :, :3])
+            red[:, :, 2] = 230
+            blend = (shine.astype(np.float32) / 255.0 * 0.45)[:, :, None]
+            bruised[:, :, :3] = (bruised[:, :, :3].astype(np.float32) * (1.0 - blend) + red.astype(np.float32) * blend).astype(np.uint8)
+        return bruised
+
+    def bruised_sprite_rgba(self, sprite):
+        level = max(0.0, min(1.0, self.opponent_bruise_level))
+        if level <= 0.02:
+            return sprite
+        bruised = sprite.copy()
+        h, w = bruised.shape[:2]
+        alpha = bruised[:, :, 3] if bruised.shape[2] == 4 else np.full((h, w), 255, dtype=np.uint8)
+        overlay = np.zeros_like(bruised[:, :, :3])
+
+        def blend_ellipse(cx, cy, rx, ry, color, strength):
+            mask = np.zeros((h, w), dtype=np.uint8)
+            center = (int(w * cx), int(h * cy))
+            axes = (max(2, int(w * rx)), max(2, int(h * ry)))
+            cv2.ellipse(mask, center, axes, 0, 0, 360, int(220 * strength), -1, cv2.LINE_AA)
+            mask[:] = np.minimum(mask, alpha)
+            tint = np.zeros_like(overlay)
+            tint[:, :] = color
+            blend = (mask.astype(np.float32) / 255.0 * (0.24 + level * 0.30))[:, :, None]
+            bruised[:, :, :3] = (bruised[:, :, :3].astype(np.float32) * (1.0 - blend) + tint.astype(np.float32) * blend).astype(np.uint8)
+
+        blend_ellipse(0.44, 0.18, 0.030, 0.020, (120, 45, 92), min(1.0, level * 1.2))
+        blend_ellipse(0.56, 0.18, 0.030, 0.020, (104, 38, 86), min(1.0, level))
+        blend_ellipse(0.50, 0.215, 0.020, 0.030, (54, 42, 188), min(1.0, level * 0.9))
+        if level > 0.42:
+            blend_ellipse(0.51, 0.265, 0.050, 0.013, (58, 48, 178), min(1.0, (level - 0.30) * 1.5))
+        return bruised
 
     def draw_button(self, frame, rect, label, accent, action=None, payload=None, selected=False):
         self.tech_panel(frame, rect, GOLD if selected else accent, fill=(14, 18, 28), alpha=0.80, line=3 if selected else 2)
@@ -904,6 +1023,14 @@ class BoxingCommandArena:
         self.enemy_stamina = float(MAX_HP)
         self.combo_count = 0
         self.combo_until = 0.0
+        self.buffered_punch = None
+        self.player_recovery_until = 0.0
+        self.player_cancel_after = 0.0
+        self.last_player_move_id = None
+        self.counter_window_until = 0.0
+        self.counter_family = None
+        self.combo_recipe_flash_until = 0.0
+        self.combo_recipe_label = ""
         self.impact_until = 0.0
         self.impact_move_id = None
         self.power_level = "LIGHT"
@@ -1090,11 +1217,12 @@ class BoxingCommandArena:
         self.set_message(f"Welcome to the card, {cleaned}.", 2.2)
         return True
 
-    def register_offense_feedback(self, move, now, blocked=False, broke_guard=False, chip_damage=0):
+    def register_offense_feedback(self, move, now, blocked=False, broke_guard=False, chip_damage=0, counter=False):
         motion = self.last_detected_motion or {}
         timing_bonus = self.current_prompt_timing
         technique_key = "jab" if move["id"].endswith("straight") else "hook" if move["id"].endswith("hook") else "uppercut"
         technique_value = self.career.techniques.get(technique_key, 10.0)
+        stamina_quality = self.player_stamina_quality()
         pounds = int(
             95
             + max(0.0, motion.get("planar", 0.0)) * 220
@@ -1105,16 +1233,21 @@ class BoxingCommandArena:
             + technique_value * 2.5
             + timing_bonus * 90
         )
-        critical = pounds >= 285 or timing_bonus > 0.82
+        pounds = int(pounds * (0.72 + stamina_quality * 0.28))
+        critical = pounds >= 285 or timing_bonus > 0.82 or counter
         damage = 1 + int(pounds >= 195) + int(pounds >= 285) + int(critical)
         if blocked and not broke_guard:
             damage = chip_damage
             critical = False
         elif broke_guard:
             damage += 1
-        combo_bonus = self.combo_chain_bonus(move["id"], now)
+        combo_bonus, combo_label = self.combo_chain_bonus(move["id"], now)
+        if counter:
+            combo_bonus += 1
         damage += combo_bonus
         self.enemy_hp = max(0, self.enemy_hp - damage)
+        if damage > 0:
+            self.opponent_bruise_level = min(1.0, self.opponent_bruise_level + 0.055 * damage + (0.04 if critical else 0.0))
         self.hit_flash_until = now + 0.18
         self.combo_count += 1
         self.combo_peak = max(self.combo_peak, self.combo_count)
@@ -1123,9 +1256,13 @@ class BoxingCommandArena:
         self.impact_until = now + 0.65
         self.impact_move_id = move["id"]
         self.power_level = "HEAVY" if critical or self.combo_count >= 6 else "MEDIUM" if pounds >= 180 or self.combo_count >= 3 else "LIGHT"
-        crit_text = " CRIT!" if critical else " GUARD BREAK!" if broke_guard else " BLOCKED" if blocked and damage == 0 else ""
+        crit_text = " COUNTER!" if counter else " CRIT!" if critical else " GUARD BREAK!" if broke_guard else " BLOCKED" if blocked and damage == 0 else ""
         if combo_bonus > 0:
             crit_text += f" COMBO+{combo_bonus}"
+        if combo_label:
+            crit_text += f" {combo_label}"
+            self.combo_recipe_flash_until = now + 1.15
+            self.combo_recipe_label = combo_label
         self.last_action_feedback = {
             "text": f"{move['label']}  {pounds} lb  -{damage} HP{crit_text}",
             "until": now + 1.2,
@@ -1140,12 +1277,18 @@ class BoxingCommandArena:
             if broke_guard or critical:
                 self.career.progress_technique("body", 0.08)
         self.recent_player_moves.append((now, move["id"]))
+        self.counter_window_until = 0.0
+        self.counter_family = None
         return {"damage": damage, "blocked": blocked, "broke_guard": broke_guard}
 
     def combo_chain_bonus(self, move_id, now):
         recent = [(t, mid) for t, mid in self.recent_player_moves if now - t <= 1.6]
         if not recent:
-            return 0
+            return 0, ""
+        ids = [mid for _, mid in recent] + [move_id]
+        for recipe, label, bonus in COMBO_RECIPES:
+            if len(ids) >= len(recipe) and tuple(ids[-len(recipe) :]) == recipe:
+                return bonus, label
         families = [self.offense_family(mid) for _, mid in recent]
         current_family = self.offense_family(move_id)
         bonus = 0
@@ -1153,7 +1296,67 @@ class BoxingCommandArena:
             bonus += 1
         if len(families) >= 2 and len(set(families[-2:] + [current_family])) >= 2:
             bonus += 1
-        return min(2, bonus)
+        return min(2, bonus), ""
+
+    def player_stamina_quality(self):
+        cap = max(1.0, float(max(self.player_hp, 1)))
+        return max(0.35, min(1.0, self.player_stamina / cap))
+
+    def punch_tuning(self, move_id):
+        family = self.offense_family(move_id)
+        tuning = PUNCH_FLOW.get(family, PUNCH_FLOW["straight"])
+        fatigue = 1.0 + (1.0 - self.player_stamina_quality()) * 0.65
+        return {
+            "recovery": tuning["recovery"] * fatigue,
+            "cancel": tuning["cancel"] * fatigue,
+            "cost": tuning["cost"],
+        }
+
+    def can_cancel_punch(self, previous_id, next_id):
+        if not previous_id:
+            return False
+        previous_family = self.offense_family(previous_id)
+        next_family = self.offense_family(next_id)
+        return next_family in PUNCH_CANCELS.get(previous_family, set())
+
+    def can_release_punch(self, move_id, now):
+        if now >= self.player_recovery_until:
+            return True
+        return now >= self.player_cancel_after and self.can_cancel_punch(self.last_player_move_id, move_id)
+
+    def buffer_punch(self, move_id, now):
+        if self.player_recovery_until - now <= INPUT_BUFFER_EARLY_WINDOW:
+            self.buffered_punch = {"move_id": move_id, "stored_at": now, "expires_at": now + INPUT_BUFFER_HOLD}
+            self.last_action_feedback = {"text": f"{MOVE_BY_ID[move_id]['label']} queued", "until": now + 0.45, "color": SOFT}
+
+    def consume_buffered_punch(self, valid_move_ids, now):
+        if not self.buffered_punch:
+            return None
+        if now > self.buffered_punch["expires_at"]:
+            self.buffered_punch = None
+            return None
+        move_id = self.buffered_punch["move_id"]
+        if move_id not in valid_move_ids or not self.can_release_punch(move_id, now):
+            return None
+        self.buffered_punch = None
+        return MOVE_BY_ID[move_id]
+
+    def commit_punch_timing(self, move, now):
+        tuning = self.punch_tuning(move["id"])
+        self.last_punch_at = now
+        self.last_player_move_id = move["id"]
+        self.player_cancel_after = now + tuning["cancel"]
+        self.player_recovery_until = now + tuning["recovery"]
+
+    def note_successful_defense(self, prompt, defense_result, now):
+        family = prompt.get("family")
+        if family is None:
+            attack_id = prompt.get("enemy_attack_id", "")
+            family = "uppercut" if attack_id.endswith("uppercut") else "hook" if attack_id.endswith("hook") else "straight"
+        counter_family = {"straight": "hook", "hook": "uppercut", "uppercut": "straight"}.get(family, "straight")
+        self.counter_family = counter_family
+        window = 0.80 if defense_result.get("chip", 0) == 0 else 0.55
+        self.counter_window_until = now + window
 
     def current_gap(self):
         speedup = 0.06 * min(self.actions_cleared, 10) + 0.12 * max(self.round_index - 1, 0)
@@ -1360,6 +1563,7 @@ class BoxingCommandArena:
         blocked = False
         broke_guard = False
         chip = 0
+        counter = now < self.counter_window_until and (self.counter_family is None or family == self.counter_family or self.arena_rank() < 2)
         if self.enemy_block:
             counter_moves = self.enemy_block.get("counter_moves", [])
             if move["id"] in counter_moves or family == self.enemy_block["counter"]:
@@ -1368,7 +1572,10 @@ class BoxingCommandArena:
             else:
                 blocked = True
                 chip = 1 if self.arena_rank() >= 4 and family == "straight" else 0
-        outcome = self.register_offense_feedback(move, now, blocked=blocked, broke_guard=broke_guard, chip_damage=chip)
+        if counter and not blocked:
+            broke_guard = True
+            self.current_prompt_timing = min(1.0, self.current_prompt_timing + 0.18)
+        outcome = self.register_offense_feedback(move, now, blocked=blocked, broke_guard=broke_guard, chip_damage=chip, counter=counter and not blocked)
         if blocked:
             self.register_block_contact(move["hand"], now)
         self.enemy_block = None
@@ -1501,7 +1708,9 @@ class BoxingCommandArena:
         segment_xy = np.linalg.norm(delta_xy, axis=1)
         path_len = float(np.sum(segment_xy) / shoulder_width)
         net_displacement = float(np.linalg.norm(end[:2] - start[:2]) / shoulder_width)
-        peak_speed = float(np.max(segment_xy / shoulder_width / dt)) if len(dt) else 0.0
+        segment_speed = segment_xy / shoulder_width / dt if len(dt) else np.array([], dtype=np.float32)
+        peak_index = int(np.argmax(segment_speed)) if len(segment_speed) else 0
+        peak_speed = float(np.max(segment_speed)) if len(segment_speed) else 0.0
         mean_speed = float(path_len / max(times[-1] - times[0], 1e-3))
         pre_dx = float((mid[0] - start[0]) / shoulder_width)
         pre_dy = float((mid[1] - start[1]) / torso_height)
@@ -1545,6 +1754,8 @@ class BoxingCommandArena:
             "path_len": path_len,
             "net_displacement": net_displacement,
             "peak_speed": peak_speed,
+            "peak_index": peak_index,
+            "phase_ok": 0 < peak_index < max(1, len(segment_xy) - 1),
             "mean_speed": mean_speed,
             "motion_energy": motion_energy,
         }
@@ -1556,6 +1767,8 @@ class BoxingCommandArena:
         min_displacement = 0.17 if strict else 0.13
         min_peak_speed = 1.95 if strict else 1.34
         min_energy = 0.46 if strict else 0.31
+        if strict and not motion.get("phase_ok", True):
+            return False
         return (
             motion["path_len"] >= min_path
             and motion["net_displacement"] >= min_displacement
@@ -2084,6 +2297,27 @@ class BoxingCommandArena:
             self.target_prompt = None
             self.next_prompt_at = now + self.current_gap()
 
+    def detect_or_buffer_player_punch(self, valid_move_ids, pose_data, now, strict=True):
+        buffered = self.consume_buffered_punch(valid_move_ids, now)
+        if buffered is not None and self.player_stamina >= self.punch_tuning(buffered["id"])["cost"]:
+            return buffered
+        for move_id in valid_move_ids:
+            if self.detect_offense_move(move_id, pose_data, strict=strict):
+                if self.player_stamina < self.punch_tuning(move_id)["cost"]:
+                    self.last_action_feedback = {"text": "Low stamina. Guard or move to recover.", "until": now + 0.7, "color": ORANGE}
+                    return None
+                if self.can_release_punch(move_id, now):
+                    return MOVE_BY_ID[move_id]
+                self.buffer_punch(move_id, now)
+                return None
+        return None
+
+    def spend_and_commit_player_punch(self, move, now, cost_scale=1.0):
+        tuning = self.punch_tuning(move["id"])
+        self.spend_stamina("player", tuning["cost"] * cost_scale, now)
+        self.commit_punch_timing(move, now)
+        self.wrist_history[move["hand"]].clear()
+
     def process_command_round(self, pose_data, defense, now):
         self.spawn_prompt(now)
         if not self.prompt:
@@ -2091,27 +2325,17 @@ class BoxingCommandArena:
         move = self.prompt["move"]
         if self.prompt["type"] == "offense":
             prompt_strict = True
-            if now - self.last_punch_at > PUNCH_COOLDOWN and self.can_throw_punch("player") and self.detect_offense_move(move["id"], pose_data, strict=prompt_strict):
+            valid_move_ids = [move["id"]]
+            if self.prompt.get("enemy_block"):
+                valid_move_ids.extend([mid for mid in self.prompt["enemy_block"].get("counter_moves", []) if mid not in valid_move_ids])
+            detected_move = self.detect_or_buffer_player_punch(valid_move_ids, pose_data, now, strict=prompt_strict)
+            if detected_move:
                 self.match_thrown_punches += 1
-                self.spend_stamina("player", 1.0, now)
+                self.spend_and_commit_player_punch(detected_move, now)
                 duration = max(0.001, self.prompt["expires_at"] - self.prompt["issued_at"])
                 self.current_prompt_timing = max(0.0, min(1.0, 1.0 - ((self.prompt["expires_at"] - now) / duration)))
-                self.last_punch_at = now
-                self.wrist_history[move["hand"]].clear()
-                self.resolve_command_success(move, False, now)
+                self.resolve_command_success(detected_move, False, now)
                 return
-            if self.prompt.get("enemy_block") and now - self.last_punch_at > PUNCH_COOLDOWN and self.can_throw_punch("player"):
-                for alt_move_id in self.prompt["enemy_block"].get("counter_moves", []):
-                    if alt_move_id != move["id"] and self.detect_offense_move(alt_move_id, pose_data, strict=True):
-                        self.match_thrown_punches += 1
-                        self.spend_stamina("player", 1.0, now)
-                        alt_move = MOVE_BY_ID[alt_move_id]
-                        duration = max(0.001, self.prompt["expires_at"] - self.prompt["issued_at"])
-                        self.current_prompt_timing = max(0.0, min(1.0, 1.0 - ((self.prompt["expires_at"] - now) / duration)))
-                        self.last_punch_at = now
-                        self.wrist_history[alt_move["hand"]].clear()
-                        self.resolve_command_success(alt_move, False, now)
-                        return
         else:
             defense_result = self.evaluate_defense_prompt(defense, self.prompt)
             if defense_result:
@@ -2125,6 +2349,7 @@ class BoxingCommandArena:
                 }
                 self.prompt["chip_on_block"] = defense_result["chip"]
                 self.register_block_contact("left" if self.prompt["enemy_attack_id"].startswith("left") else "right", now)
+                self.note_successful_defense(self.prompt, defense_result, now)
                 self.resolve_command_success(blocked_move, True, now)
                 return
 
@@ -2194,44 +2419,45 @@ class BoxingCommandArena:
             }
             self.prompt["chip_on_block"] = defense_result["chip"]
             self.register_block_contact("left" if self.realtime_active_attack["enemy_attack_id"].startswith("left") else "right", now)
+            self.note_successful_defense(self.realtime_active_attack, defense_result, now)
             self.resolve_command_success(move, True, now)
             self.realtime_active_attack = None
             self.realtime_next_event_at = now + 0.34
             return
 
-        if self.enemy_block and self.prompt and self.prompt["type"] == "offense" and now - self.last_punch_at > PUNCH_COOLDOWN and self.can_throw_punch("player"):
+        if self.enemy_block and self.prompt and self.prompt["type"] == "offense":
             valid_moves = list(self.enemy_block.get("counter_moves", []))
-            for move_id in valid_moves:
-                if self.detect_offense_move(move_id, pose_data, strict=True):
-                    move = MOVE_BY_ID[move_id]
-                    self.match_thrown_punches += 1
-                    self.spend_stamina("player", 1.0, now)
-                    self.current_prompt_timing = 0.74
-                    self.last_punch_at = now
-                    self.wrist_history[move["hand"]].clear()
-                    self.recent_offense_families.append(self.offense_family(move_id))
-                    self.resolve_command_success(move, False, now)
-                    self.realtime_next_event_at = now + 0.26
-                    return
+            move = self.detect_or_buffer_player_punch(valid_moves, pose_data, now, strict=True)
+            if move:
+                self.match_thrown_punches += 1
+                self.spend_and_commit_player_punch(move, now)
+                self.current_prompt_timing = 0.74
+                self.recent_offense_families.append(self.offense_family(move["id"]))
+                self.resolve_command_success(move, False, now)
+                self.realtime_next_event_at = now + 0.26
+                return
 
-        if self.enemy_block is None and self.realtime_active_attack is None and now - self.last_punch_at > PUNCH_COOLDOWN and self.can_throw_punch("player"):
-            for move in OFFENSE_MOVES:
-                if self.detect_offense_move(move["id"], pose_data, strict=True):
-                    self.match_thrown_punches += 1
-                    self.spend_stamina("player", 1.0, now)
-                    self.current_prompt_timing = 0.58
-                    self.last_punch_at = now
-                    self.wrist_history[move["hand"]].clear()
-                    self.recent_offense_families.append(self.offense_family(move["id"]))
-                    outcome = self.register_offense_feedback(move, now, blocked=False, broke_guard=False, chip_damage=0)
+        if self.enemy_block is None and self.realtime_active_attack is None:
+            valid_ids = [move["id"] for move in OFFENSE_MOVES]
+            move = self.detect_or_buffer_player_punch(valid_ids, pose_data, now, strict=True)
+            if move:
+                self.match_thrown_punches += 1
+                self.spend_and_commit_player_punch(move, now)
+                counter = now < self.counter_window_until
+                self.current_prompt_timing = 0.72 if counter else 0.58
+                self.recent_offense_families.append(self.offense_family(move["id"]))
+                outcome = self.register_offense_feedback(move, now, blocked=False, broke_guard=counter, chip_damage=0, counter=counter)
+                if counter:
+                    self.set_message(f"{move['label']} countered off your defense for {outcome['damage']} HP.", 0.8)
+                else:
                     self.set_message(f"{move['label']} snapped through for {outcome['damage']} HP.", 0.7)
-                    self.last_action_feedback = {
-                        "text": f"{move['label']} found space in live flow",
-                        "until": now + 0.9,
-                        "color": CYAN,
-                    }
-                    self.realtime_next_event_at = now + 0.18
-                    return
+                self.last_action_feedback = {
+                    "text": f"{move['label']} {'counter window' if counter else 'found space in live flow'}",
+                    "until": now + 0.9,
+                    "color": GOLD if counter else CYAN,
+                }
+                self.realtime_next_event_at = now + (0.16 if counter else 0.18)
+                return
 
         if self.realtime_active_attack and now >= self.realtime_active_attack["expires_at"]:
             attack_prompt = self.realtime_active_attack
@@ -2301,10 +2527,11 @@ class BoxingCommandArena:
         if self.target_prompt is None:
             return
 
-        if now - self.last_punch_at > PUNCH_COOLDOWN and self.can_throw_punch("player") and self.detect_target_hit(pose_data, self.target_prompt):
+        target_move_id = self.target_prompt["move_id"]
+        target_move = self.detect_or_buffer_player_punch([target_move_id], pose_data, now, strict=True)
+        if target_move:
             self.current_prompt_timing = 0.5
-            self.spend_stamina("player", 1.0, now)
-            self.last_punch_at = now
+            self.spend_and_commit_player_punch(target_move, now)
             self.resolve_target_success(now)
             return
 
@@ -2394,9 +2621,9 @@ class BoxingCommandArena:
             return
 
         if prompt["type"] in ("offense", "combo"):
-            if now - self.last_punch_at > PUNCH_COOLDOWN and self.can_throw_punch("player") and self.detect_target_hit(pose_data, prompt):
-                self.spend_stamina("player", 0.8, now)
-                self.last_punch_at = now
+            target_move = self.detect_or_buffer_player_punch([prompt["move_id"]], pose_data, now, strict=True)
+            if target_move:
+                self.spend_and_commit_player_punch(target_move, now, cost_scale=0.8)
                 if prompt["type"] == "combo":
                     move_id = prompt["move_id"]
                     technique_key = "jab" if move_id.endswith("straight") else "hook" if move_id.endswith("hook") else "uppercut"
@@ -2880,10 +3107,18 @@ class BoxingCommandArena:
 
     def draw_attack_telegraph(self, frame, hand_point, now):
         pulse = 1.0 + 0.18 * math.sin(now * 12.0)
-        cv2.circle(frame, hand_point, int(36 * pulse), RED, 4, cv2.LINE_AA)
+        remaining = max(0.0, self.enemy_attack_flash_until - now)
+        window = 1.1
+        if self.prompt and self.prompt.get("issued_at") and self.prompt.get("expires_at"):
+            window = max(0.2, self.prompt["expires_at"] - self.prompt["issued_at"])
+        progress = max(0.0, min(1.0, 1.0 - remaining / window))
+        radius = int(42 * pulse)
+        cv2.circle(frame, hand_point, radius, RED, 4, cv2.LINE_AA)
+        cv2.ellipse(frame, hand_point, (radius + 10, radius + 10), -90, 0, int(360 * progress), GOLD, 5, cv2.LINE_AA)
         cv2.circle(frame, hand_point, int(24 * pulse), ORANGE, 3, cv2.LINE_AA)
         cv2.line(frame, (hand_point[0] - 28, hand_point[1]), (hand_point[0] + 28, hand_point[1]), RED, 2, cv2.LINE_AA)
         cv2.line(frame, (hand_point[0], hand_point[1] - 28), (hand_point[0], hand_point[1] + 28), RED, 2, cv2.LINE_AA)
+        cv2.putText(frame, "READ", (hand_point[0] - 28, hand_point[1] - radius - 18), cv2.FONT_HERSHEY_DUPLEX, 0.62, WHITE, 2, cv2.LINE_AA)
 
     def draw_block_contact(self, frame, now, left_arm, right_arm):
         if now >= self.block_contact_until or not self.block_contact_side:
@@ -2937,6 +3172,7 @@ class BoxingCommandArena:
             elif now < self.opponent_recover_until:
                 blend = (self.opponent_recover_until - now) / max(0.001, 2.4)
                 sprite_for_ring = self.gray_rgba(sprite_for_ring, min(0.8, blend))
+            sprite_for_ring = self.bruised_sprite_rgba(sprite_for_ring)
             if ring_focus_mode:
                 sprite_for_ring = self.blur_rgba(sprite_for_ring, ksize=19)
             sprite_scale = min(frame.shape[1] / max(sprite.shape[1], 1) * 0.34, frame.shape[0] / max(sprite.shape[0], 1) * 0.62)
@@ -3259,12 +3495,12 @@ class BoxingCommandArena:
         self.tech_panel(frame, (x1, y1, x2, y2), ORANGE, fill=(10, 14, 24), alpha=0.78)
         line1 = "Straight: slip away from the punch or high guard."
         line2 = "Hook: duck is best. Guard cuts damage. Uppercut: guard cuts damage."
-        line3 = "Wide gate -> straight   Tight shell -> hook   Elbows high -> straight."
+        line3 = COMBO_HINTS[0]
         if self.prompt and self.prompt.get("enemy_block"):
             block = self.prompt["enemy_block"]
             line1 = f"Rival shows {block['label']}."
             line2 = block["hint"]
-            line3 = "Follow the center prompt and match the opening."
+            line3 = "Follow the prompt, then chain: straight -> hook -> uppercut."
         elif self.prompt and self.prompt.get("enemy_attack_id"):
             attack = MOVE_BY_ID[self.prompt["enemy_attack_id"]]
             line1 = f"Incoming {attack['label']}."
@@ -3405,6 +3641,14 @@ class BoxingCommandArena:
         self.draw_text(frame, f"{arena['name'].upper()}  |  {arena['scene']}", (34, 118), CYAN, size=19, family="body")
         self.draw_text(frame, f"YOU THROWN {self.match_thrown_punches}  LANDED {self.match_landed_hits}", (34, 144), WHITE, size=20, family="display", stroke=1)
         self.draw_text(frame, f"YOU KD {self.player_knockdowns}  |  RIVAL KD {self.enemy_knockdowns}", (34, 168), SOFT, size=18, family="display")
+        now = time.time()
+        if self.buffered_punch and now <= self.buffered_punch["expires_at"]:
+            self.draw_text(frame, f"BUFFERED: {MOVE_BY_ID[self.buffered_punch['move_id']]['label']}", (w // 2, 106), CYAN, size=20, family="display", anchor="ma", stroke=1)
+        if now < self.counter_window_until:
+            family = (self.counter_family or "any").upper()
+            self.draw_text(frame, f"COUNTER WINDOW: {family}", (w // 2, 130), GOLD, size=22, family="display", anchor="ma", stroke=1)
+        if now < self.combo_recipe_flash_until and self.combo_recipe_label:
+            self.draw_text(frame, self.combo_recipe_label, (w // 2, 158), ORANGE, size=28, family="display", anchor="ma", stroke=1)
         if self.last_action_feedback and time.time() < self.last_action_feedback["until"]:
             self.draw_text(frame, self.last_action_feedback["text"], (34, 194), self.last_action_feedback["color"], size=22, family="display", stroke=1)
         if time.time() < self.message_until:

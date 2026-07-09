@@ -40,3 +40,10 @@ Eye-Controlled Web Game Prototype | JavaScript, HTML5 Canvas, EyeDid/SeeSo -- Bu
 - The Python modules show rapid prototyping breadth: posture wellness, desktop accessibility controls, OpenVINO exploration, and motion-controlled games.
 - The next engineering step would be modularization and automated tests around pure logic, especially career progression, motion profile matching, posture scoring, and smoothing.
 
+## Boxing Game Bullets
+
+**Motion-Controlled Boxing Arena | Python, OpenCV, MediaPipe** 
+• Engineered a motion-controlled boxing career game utilizing OpenCV and MediaPipe to map real-time human pose landmarks and wrist vectors into gesture-recognized punches and defensive movements.
+• Architected a dynamic motion-profiling algorithm that learns custom punch signatures by extracting statistical min/max feature ranges from user samples, employing tolerance-based vector matching for accurate, personalized gesture recognition.
+• Developed a comprehensive state-driven game loop and custom rendering engine featuring an adaptive opponent AI, real-time combo scoring, stamina and HP management, and immersive knockdown mechanics.
+• Implemented a persistent career progression architecture leveraging structured JSON save states to orchestrate multi-arena unlocks, dynamic sponsor tasks, and incremental training upgrades for sustained user engagement.

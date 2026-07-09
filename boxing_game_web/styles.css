@@ -412,6 +412,85 @@ select {
   font-size: 1.22rem;
 }
 
+.combo-hint-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid rgba(52, 223, 246, 0.24);
+  background: rgba(7, 17, 31, 0.68);
+}
+
+.combo-hint-strip .eyebrow {
+  margin-right: 2px;
+}
+
+.combo-hint-strip strong {
+  padding: 5px 8px;
+  border: 1px solid rgba(250, 204, 21, 0.28);
+  color: var(--gold);
+  font-size: 0.82rem;
+}
+
+.fight-rival-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid rgba(250, 204, 21, 0.42);
+  background: rgba(7, 17, 31, 0.82);
+}
+
+.fight-rival-card strong,
+.fight-rival-card small {
+  display: block;
+}
+
+.fight-rival-card small {
+  color: var(--soft);
+}
+
+.bruised-avatar {
+  position: relative;
+  width: 82px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 2px solid var(--gold);
+}
+
+.bruised-avatar img,
+.bruised-avatar .avatar-placeholder {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.bruised-avatar::before,
+.bruised-avatar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: calc(var(--bruise, 0) * 0.95);
+}
+
+.bruised-avatar::before {
+  background:
+    radial-gradient(ellipse at 38% 42%, rgba(96, 42, 150, 0.78) 0 9%, transparent 18%),
+    radial-gradient(ellipse at 62% 43%, rgba(70, 32, 132, 0.72) 0 8%, transparent 17%),
+    radial-gradient(ellipse at 51% 56%, rgba(180, 35, 60, 0.62) 0 5%, transparent 13%);
+  mix-blend-mode: multiply;
+}
+
+.bruised-avatar::after {
+  background:
+    linear-gradient(110deg, transparent 49%, rgba(239, 68, 68, 0.72) 50%, transparent 53%),
+    radial-gradient(ellipse at 52% 68%, rgba(120, 40, 120, 0.52) 0 10%, transparent 20%);
+  opacity: calc(max(0, var(--bruise, 0) - 0.35) * 1.2);
+}
+
 .avatar-stage {
   display: grid;
   justify-items: center;

@@ -35,7 +35,9 @@ python3 -m http.server 8000
 
 Then open:
 
-- `http://localhost:8000/`
+- `http://localhost:8000/boxing_game_web/`
+
+Or run the server from this folder and open `http://localhost:8000/`.
 
 Important:
 
@@ -63,7 +65,7 @@ For training:
 
 - Framework preset: `None`
 - Build command: none
-- Output directory: `/`
+- Output directory: `boxing_game_web`
 
 ## Project structure
 
