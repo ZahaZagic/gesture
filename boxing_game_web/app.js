@@ -4,10 +4,16 @@ const TRAINING_DURATION_MS = 30000;
 
 const HUB_ITEMS = [
   {
-    id: "fight",
-    title: "Fight Map",
-    kicker: "Career",
-    copy: "Choose an arena, bring up the webcam, and fight with real body motion prompts in the browser.",
+    id: "quick",
+    title: "Quick Fight",
+    kicker: "Play now",
+    copy: "One exhibition round with no entry fee or career consequences.",
+  },
+  {
+    id: "career",
+    title: "Career",
+    kicker: "Climb the ladder",
+    copy: "Choose an arena, earn purses, and build your record.",
   },
   {
     id: "training",
@@ -17,15 +23,9 @@ const HUB_ITEMS = [
   },
   {
     id: "profile",
-    title: "Profile / Fighters",
-    kicker: "Identity",
-    copy: "Modern profile editing, head uploads, crop flow, and full opponent roster management.",
-  },
-  {
-    id: "locker",
-    title: "Locker Room",
-    kicker: "History",
-    copy: "Recent results, stat progression, sponsor count, and your active rival setup.",
+    title: "Customize",
+    kicker: "Fighters",
+    copy: "Edit your boxer, crop portraits, and manage rivals.",
   },
 ];
 
@@ -258,6 +258,8 @@ const DEFAULT_STATE = {
   screen: "hub",
   previousScreens: [],
   selectedArenaId: "town",
+  fightMode: "career",
+  soundEnabled: true,
   profileTab: "boxer",
   selectedOpponentId: "milo_vega",
   selectedTrainingId: "power",
@@ -269,9 +271,9 @@ const DEFAULT_STATE = {
     wins: 0,
     losses: 0,
     stats: {
-      power: 21.4,
-      stamina: 16.8,
-      agility: 14.9,
+      power: 8,
+      stamina: 8,
+      agility: 8,
     },
     matchHistory: [],
     sponsorCount: 0,
@@ -304,6 +306,9 @@ const runtime = {
   statusText: "Camera is offline. Start camera to begin.",
   lastMoveFeedback: "",
   sessionMetrics: {},
+  trackingStableSince: 0,
+  cameraReady: false,
+  audioContext: null,
 };
 
 const root = document.getElementById("screenRoot");
@@ -553,8 +558,10 @@ function renderHubScreen() {
     <div class="hub-grid">
       ${HUB_ITEMS.map(
         (item, index) => `
-          <button class="menu-card ${index === 0 ? "selected" : ""}" data-go="${item.id}">
+          <button class="menu-card ${index === 0 ? "selected" : ""}" ${item.id === "quick" || item.id === "career" ? `data-fight-mode="${item.id}"` : `data-go="${item.id}"`}>
+            <span class="menu-kicker">${item.kicker}</span>
             <div class="menu-label">${item.title.toUpperCase()}</div>
+            <small>${item.copy}</small>
           </button>
         `,
       ).join("")}
@@ -564,7 +571,7 @@ function renderHubScreen() {
       <div>Cash $${state.career.cash}   Points ${state.career.points}   W-L ${state.career.wins}-${state.career.losses}   Rank #${worldRank()}</div>
     </div>
   `;
-  return renderScene("CAREER MAP", "Choose your next stop in the boxing career.", content, {
+  return renderScene("GESTURE BOXING", "Fight now, grow a career, or sharpen one skill.", content, {
     screen: "hub",
     eyebrow: "Home",
     actions: `
@@ -576,12 +583,13 @@ function renderHubScreen() {
 function renderFightScreen() {
   const current = selectedArena();
   const opponent = currentArenaOpponent(current.id);
+  const quickFight = state.fightMode === "quick";
   const content = `
     <div class="arena-layout">
       <div class="panel-frame gold">
-        <p class="eyebrow">Arena Ladder</p>
-        <div class="node-row">
-          ${ARENAS.map((arena) => {
+        <p class="eyebrow">${quickFight ? "Exhibition" : "Arena Ladder"}</p>
+        <div class="node-row ${quickFight ? "single" : ""}">
+          ${(quickFight ? [ARENAS[0]] : ARENAS).map((arena) => {
             const active = arena.id === state.selectedArenaId;
             const unlocked = isArenaUnlocked(arena.id);
             return `
@@ -608,9 +616,9 @@ function renderFightScreen() {
           </div>
         </div>
         <div class="hud-strip">
-          <div class="hud-box"><span>Entry</span><strong class="hud-value">$${current.entryFee}</strong></div>
-          <div class="hud-box"><span>Upkeep</span><strong class="hud-value">$${current.upkeep}</strong></div>
-          <div class="hud-box"><span>Prize</span><strong class="hud-value">$${current.basePrize}</strong></div>
+          <div class="hud-box"><span>Entry</span><strong class="hud-value">${quickFight ? "FREE" : `$${current.entryFee}`}</strong></div>
+          <div class="hud-box"><span>Rounds</span><strong class="hud-value">${quickFight ? "1" : arenaRank(current.id) < 2 ? "2" : "3"}</strong></div>
+          <div class="hud-box"><span>${quickFight ? "Record" : "Prize"}</span><strong class="hud-value">${quickFight ? "OFF" : `$${current.basePrize}`}</strong></div>
         </div>
       </div>
     </div>
@@ -618,11 +626,12 @@ function renderFightScreen() {
       ${renderCameraStage("fight")}
     </div>
   `;
-  return renderScene("FIGHT MAP", "Choose an arena, start the camera, then enter the fight.", content, {
+  return renderScene(quickFight ? "QUICK FIGHT" : "CAREER FIGHT", quickFight ? "Camera check, one round, straight into the action." : "Choose an arena, pass the camera check, then fight for your record.", content, {
     screen: "fight",
     actions: `
       <button class="tech-button green" data-camera="toggle">${runtime.cameraActive ? "Stop Camera" : "Start Camera"}</button>
       <button class="tech-button gold" data-action="start-fight">Start Fight</button>
+      <button class="tech-button cyan sound-toggle" data-ui="toggle-sound">Sound ${state.soundEnabled ? "On" : "Off"}</button>
       <button class="tech-button red" data-ui="go-back">Back</button>
     `,
   });
@@ -680,6 +689,17 @@ function renderCameraStage(mode) {
           <span class="badge ${runtime.cameraActive ? "online" : "offline"}">${runtime.cameraActive ? "Camera Live" : "Camera Idle"}</span>
           <div class="camera-message" id="cameraStatus">${escapeHtml(runtime.statusText)}</div>
         </div>
+        ${mode === "fight" && opponent ? `<div class="enemy-telegraph idle" id="enemyTelegraph">
+          <div class="telegraph-ring"><div class="telegraph-avatar bruised-avatar">${avatarMarkup(opponentAvatar(opponent), opponent.name)}</div></div>
+          <strong id="telegraphAttack">READ THE RIVAL</strong>
+          <small id="telegraphAnswer">Attack cues appear here</small>
+        </div>` : ""}
+        ${mode === "fight" ? `<div class="fight-fx" id="fightFx" aria-hidden="true"><div class="impact-burst"></div><strong class="impact-text" id="impactText"></strong></div>` : ""}
+      </div>
+      <div class="camera-check" id="cameraCheck">
+        <span class="check-item ${runtime.cameraActive ? "ready" : ""}">1 Camera</span>
+        <span class="check-item ${runtime.lastPoseData ? "ready" : ""}">2 Full body</span>
+        <span class="check-item ${runtime.cameraReady ? "ready" : ""}">3 Tracking stable</span>
       </div>
       ${
         mode === "fight" && opponent
@@ -714,6 +734,8 @@ function renderSessionStats(mode) {
     return `
       <div class="stat-card"><span class="eyebrow">Player HP</span><strong>${runtime.activeSession?.playerHp ?? "-"}</strong></div>
       <div class="stat-card"><span class="eyebrow">Enemy HP</span><strong>${runtime.activeSession?.enemyHp ?? "-"}</strong></div>
+      <div class="stat-card"><span class="eyebrow">Stamina</span><strong>${Math.round(runtime.activeSession?.playerStamina ?? 0)}</strong></div>
+      <div class="stat-card"><span class="eyebrow">Momentum</span><strong>${Math.round(runtime.activeSession?.momentum ?? 0)}%</strong></div>
       <div class="stat-card"><span class="eyebrow">Combo</span><strong>${runtime.activeSession?.combo ?? 0} / ${runtime.activeSession?.comboPeak ?? 0}</strong></div>
     `;
   }
@@ -906,10 +928,23 @@ function bindGlobalInputs() {
         stopCamera();
         saveState();
         render();
+        return;
+      }
+      if (button.dataset.ui === "toggle-sound") {
+        state.soundEnabled = !state.soundEnabled;
+        saveState();
+        button.textContent = `Sound ${state.soundEnabled ? "On" : "Off"}`;
+        if (state.soundEnabled) playFightSound("confirm");
       }
     }),
   );
   root.querySelectorAll("[data-go]").forEach((button) => button.addEventListener("click", () => goTo(button.dataset.go)));
+  root.querySelectorAll("[data-fight-mode]").forEach((button) => button.addEventListener("click", () => {
+    state.fightMode = button.dataset.fightMode;
+    if (state.fightMode === "quick") state.selectedArenaId = "town";
+    saveState();
+    goTo("fight");
+  }));
   root.querySelectorAll("[data-tab]").forEach((button) =>
     button.addEventListener("click", () => {
       state.profileTab = button.dataset.tab;
@@ -1077,6 +1112,10 @@ function updateRuntimePanel() {
   const feedback = document.getElementById("feedbackLabel");
   const stats = document.getElementById("sessionStats");
   const rival = document.querySelector(".fight-rival-card");
+  const telegraph = document.getElementById("enemyTelegraph");
+  const telegraphAttack = document.getElementById("telegraphAttack");
+  const telegraphAnswer = document.getElementById("telegraphAnswer");
+  const cameraChecks = document.querySelectorAll("#cameraCheck .check-item");
   if (status) status.textContent = runtime.statusText;
   if (prompt) {
     if (!runtime.activeSession?.running) {
@@ -1098,6 +1137,104 @@ function updateRuntimePanel() {
   if (rival && runtime.activeSession?.mode === "fight") {
     rival.style.setProperty("--bruise", String(Math.min(1, runtime.activeSession.opponentBruise || 0)));
   }
+  if (cameraChecks.length === 3) {
+    cameraChecks[0].classList.toggle("ready", runtime.cameraActive);
+    cameraChecks[1].classList.toggle("ready", Boolean(runtime.lastPoseData));
+    cameraChecks[2].classList.toggle("ready", runtime.cameraReady);
+  }
+  if (telegraph) {
+    const session = runtime.activeSession;
+    const activePrompt = session?.prompt;
+    const phase = session?.phase || "idle";
+    telegraph.className = `enemy-telegraph ${activePrompt?.type || phase} ${activePrompt?.family || activePrompt?.enemyBlock?.counter || ""}`;
+    telegraph.style.setProperty("--telegraph-progress", activePrompt ? String(clamp(1 - (session.promptExpiresAt - performance.now()) / Math.max(1, activePrompt.windowMs), 0, 1)) : "0");
+    if (phase === "countdown") {
+      const count = Math.max(1, Math.ceil((session.readyUntil - performance.now()) / 1000));
+      telegraphAttack.textContent = String(count);
+      telegraphAnswer.textContent = "Hands up. Bell incoming.";
+    } else if (activePrompt?.type === "defense") {
+      telegraphAttack.textContent = `${MOVES[activePrompt.enemyAttackId].label} INCOMING`;
+      telegraphAnswer.textContent = `ANSWER: ${MOVES[activePrompt.expectedMoveId].label}`;
+    } else if (activePrompt?.type === "offense" && activePrompt.enemyBlock) {
+      telegraphAttack.textContent = activePrompt.enemyBlock.label;
+      telegraphAnswer.textContent = activePrompt.enemyBlock.hint;
+    } else if (activePrompt?.type === "offense") {
+      telegraphAttack.textContent = "OPENING";
+      telegraphAnswer.textContent = `THROW ${MOVES[activePrompt.expectedMoveId].label}`;
+    } else {
+      telegraphAttack.textContent = "READ THE RIVAL";
+      telegraphAnswer.textContent = "Attack cues appear here";
+    }
+  }
+}
+
+function audioContext() {
+  if (!state.soundEnabled) return null;
+  const AudioCtor = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtor) return null;
+  if (!runtime.audioContext) runtime.audioContext = new AudioCtor();
+  if (runtime.audioContext.state === "suspended") runtime.audioContext.resume().catch(() => {});
+  return runtime.audioContext;
+}
+
+function playFightSound(kind) {
+  const ctx = audioContext();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  const gain = ctx.createGain();
+  gain.connect(ctx.destination);
+
+  if (["hit", "heavy", "block"].includes(kind)) {
+    const duration = kind === "heavy" ? 0.18 : 0.1;
+    const buffer = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * duration), ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < data.length; i += 1) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+    const noise = ctx.createBufferSource();
+    const filter = ctx.createBiquadFilter();
+    noise.buffer = buffer;
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(kind === "block" ? 900 : 520, now);
+    gain.gain.setValueAtTime(kind === "block" ? 0.13 : 0.2, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+    noise.connect(filter).connect(gain);
+    noise.start(now);
+    return;
+  }
+
+  const oscillator = ctx.createOscillator();
+  oscillator.connect(gain);
+  const settings = {
+    cue: [520, 0.035, 0.045],
+    counter: [760, 0.12, 0.08],
+    miss: [150, 0.08, 0.04],
+    confirm: [620, 0.06, 0.035],
+    bell: [980, 0.55, 0.13],
+    knockdown: [82, 0.6, 0.2],
+  }[kind] || [440, 0.05, 0.03];
+  oscillator.type = kind === "bell" ? "sine" : "triangle";
+  oscillator.frequency.setValueAtTime(settings[0], now);
+  if (kind === "knockdown") oscillator.frequency.exponentialRampToValueAtTime(42, now + settings[1]);
+  gain.gain.setValueAtTime(settings[2], now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + settings[1]);
+  oscillator.start(now);
+  oscillator.stop(now + settings[1]);
+}
+
+function showFightFx(kind, text = "") {
+  const stage = document.querySelector(".camera-stage");
+  const fx = document.getElementById("fightFx");
+  const label = document.getElementById("impactText");
+  if (!stage || !fx || !label) return;
+  stage.classList.remove("fx-hit", "fx-heavy", "fx-block", "fx-hurt", "fx-knockdown");
+  fx.className = `fight-fx ${kind}`;
+  label.textContent = text;
+  void stage.offsetWidth;
+  stage.classList.add(`fx-${kind}`);
+  fx.classList.add("play");
+  window.setTimeout(() => {
+    stage.classList.remove(`fx-${kind}`);
+    fx.classList.remove("play");
+  }, kind === "knockdown" ? 900 : 430);
 }
 
 async function startCamera() {
@@ -1151,6 +1288,8 @@ function stopCamera() {
   runtime.lastPoseData = null;
   runtime.wristHistory = { left: [], right: [] };
   runtime.headYHistory = [];
+  runtime.trackingStableSince = 0;
+  runtime.cameraReady = false;
   if (runtime.stream) {
     runtime.stream.getTracks().forEach((track) => track.stop());
   }
@@ -1186,6 +1325,8 @@ function handlePoseResults(results) {
   drawPoseScene(results);
   if (!results.poseLandmarks || !runtime.canvasEl) {
     runtime.lastPoseData = null;
+    runtime.trackingStableSince = 0;
+    runtime.cameraReady = false;
     if (!runtime.activeSession?.running) {
       runtime.statusText = "Pose not found yet. Step into the frame.";
       updateRuntimePanel();
@@ -1201,13 +1342,20 @@ function handlePoseResults(results) {
   runtime.headYHistory.push(poseData.nose[1]);
   runtime.headYHistory = runtime.headYHistory.slice(-30);
 
-  if (poseData.minVisibility < 0.45) {
+  const frameReady = poseData.minVisibility >= 0.55 && poseData.nose[1] > runtime.canvasEl.height * 0.06 && poseData.hipMid[1] < runtime.canvasEl.height * 0.93;
+  if (!frameReady) {
+    runtime.trackingStableSince = 0;
+    runtime.cameraReady = false;
     runtime.statusText = "Move back a little so camera sees your head, both hands, and hips.";
     updateRuntimePanel();
     return;
   }
+  if (!runtime.trackingStableSince) runtime.trackingStableSince = performance.now();
+  runtime.cameraReady = performance.now() - runtime.trackingStableSince >= 1500;
   const defense = defenseState(poseData);
-  runtime.statusText = `Guard ${defense.guard ? "ON" : "OFF"} · Lean ${defense.leanRatio.toFixed(2)} · Camera tracking stable`;
+  runtime.statusText = runtime.cameraReady
+    ? `Ready · Guard ${defense.guard ? "ON" : "OFF"} · Lean ${defense.leanRatio.toFixed(2)}`
+    : "Hold your stance for camera calibration...";
   if (runtime.activeSession?.running) {
     processSession(poseData, defense);
   }
@@ -1499,7 +1647,7 @@ function arenaById(arenaId) {
 }
 
 function staminaQuality(session) {
-  return clamp((session.playerStamina ?? 1) / Math.max(1, session.playerHp || session.playerMaxHp || 1), 0.35, 1);
+  return clamp((session.playerStamina ?? 1) / Math.max(1, session.playerMaxStamina || 1), 0.35, 1);
 }
 
 function punchTuning(session, moveId) {
@@ -1600,6 +1748,11 @@ function beginFightSession() {
     updateRuntimePanel();
     return;
   }
+  if (!runtime.cameraReady) {
+    runtime.statusText = "Camera check incomplete. Keep your head, hands, and hips visible for a moment.";
+    updateRuntimePanel();
+    return;
+  }
   const arena = selectedArena();
   const opponent = currentArenaOpponent(arena.id);
   if (!isArenaUnlocked(arena.id)) {
@@ -1607,7 +1760,8 @@ function beginFightSession() {
     updateRuntimePanel();
     return;
   }
-  if (state.career.cash < arena.entryFee) {
+  const quickFight = state.fightMode === "quick";
+  if (!quickFight && state.career.cash < arena.entryFee) {
     runtime.statusText = "Not enough cash for the entry fee.";
     updateRuntimePanel();
     return;
@@ -1616,12 +1770,15 @@ function beginFightSession() {
   runtime.activeSession = {
     mode: "fight",
     running: true,
+    quickFight,
+    phase: "countdown",
+    readyUntil: performance.now() + 3000,
     startedAt: performance.now(),
     arenaId: arena.id,
     opponentId: opponent?.id || "",
     prompt: null,
     promptExpiresAt: 0,
-    nextPromptAt: performance.now() + 1200,
+    nextPromptAt: performance.now() + 3800,
     promptQueue: [],
     playerHp: MAX_HP + Math.round(state.career.stats.stamina * 0.45),
     enemyHp: MAX_HP + arena.enemyHpBonus + 6 + arenaRank(arena.id) * 4,
@@ -1629,9 +1786,11 @@ function beginFightSession() {
     enemyMaxHp: MAX_HP + arena.enemyHpBonus + 6 + arenaRank(arena.id) * 4,
     playerStamina: MAX_HP + Math.round(state.career.stats.stamina * 0.45),
     enemyStamina: MAX_HP + arena.enemyHpBonus + 6 + arenaRank(arena.id) * 4,
+    playerMaxStamina: MAX_HP + Math.round(state.career.stats.stamina * 0.45),
+    enemyMaxStamina: MAX_HP + arena.enemyHpBonus + 6 + arenaRank(arena.id) * 4,
     playerRounds: 0,
     enemyRounds: 0,
-    roundsNeeded: arenaRank(arena.id) < 2 ? 2 : 3,
+    roundsNeeded: quickFight ? 1 : arenaRank(arena.id) < 2 ? 2 : 3,
     knockdown: null,
     combo: 0,
     comboPeak: 0,
@@ -1647,9 +1806,10 @@ function beginFightSession() {
     counterWindowUntil: 0,
     counterFamily: "",
     opponentBruise: 0,
+    momentum: 0,
   };
-  runtime.lastMoveFeedback = "Fight started. Wait for the first prompt.";
-  runtime.statusText = `Live fight started in ${arena.name}.`;
+  runtime.lastMoveFeedback = "Hands up. Fight starts in 3.";
+  runtime.statusText = `${quickFight ? "Exhibition" : "Career fight"} ready in ${arena.name}.`;
   updateRuntimePanel();
 }
 
@@ -1698,8 +1858,23 @@ function processSession(poseData, defense) {
   if (!session?.running) {
     return;
   }
+  if (!runtime.cameraReady) {
+    runtime.statusText = "Camera check incomplete. Hold a centered stance until tracking is stable.";
+    updateRuntimePanel();
+    return;
+  }
   const now = performance.now();
   updateFightStamina(session, now);
+
+  if (session.mode === "fight" && session.phase === "countdown") {
+    if (now >= session.readyUntil) {
+      session.phase = "fight";
+      session.nextPromptAt = now + 450;
+      runtime.lastMoveFeedback = "BELL. Read the rival and move.";
+      playFightSound("bell");
+    }
+    return;
+  }
 
   if (session.mode === "training") {
     session.remainingSeconds = Math.max(0, Math.ceil((session.endsAt - now) / 1000));
@@ -1720,6 +1895,7 @@ function processSession(poseData, defense) {
     session.prompt = makePrompt(session);
     session.promptExpiresAt = now + session.prompt.windowMs;
     runtime.lastMoveFeedback = session.prompt.hint || MOVES[session.prompt.expectedMoveId].hint;
+    if (session.mode === "fight") playFightSound("cue");
   }
 
   if (!session.prompt) {
@@ -1751,8 +1927,9 @@ function updateFightStamina(session, now) {
   const dt = Math.max(0, now - last) / 1000;
   session.lastStaminaAt = now;
   if (dt <= 0) return;
-  session.playerStamina = Math.min(Math.max(1, session.playerHp), (session.playerStamina ?? session.playerHp) + dt * 0.8);
-  session.enemyStamina = Math.min(Math.max(1, session.enemyHp), (session.enemyStamina ?? session.enemyHp) + dt * 0.72);
+  const playerRegen = dt * (0.62 + staminaQuality(session) * 0.28) * (session.playerHp < session.playerMaxHp * 0.3 ? 0.72 : 1);
+  session.playerStamina = Math.min(session.playerMaxStamina, (session.playerStamina ?? session.playerMaxStamina) + playerRegen);
+  session.enemyStamina = Math.min(session.enemyMaxStamina, (session.enemyStamina ?? session.enemyMaxStamina) + dt * 0.72);
 }
 
 function makePrompt(session) {
@@ -1858,30 +2035,44 @@ function resolvePrompt(success, resolvedMoveId = "") {
       session.comboPeak = Math.max(session.comboPeak || 0, session.combo);
       session.thrown += 1;
       session.landedHits += 1;
-      let damage = 1 + Number(state.career.stats.power > 14) + Number(session.combo >= 3) + (recipe.bonus || 0) + Number(counter);
+      const focus = (session.momentum || 0) >= 100;
+      let damage = 1 + Number(state.career.stats.power > 14) + Number(session.combo >= 3) + (recipe.bonus || 0) + Number(counter) + (focus ? 2 : 0);
       damage = Math.max(1, Math.round(damage * (0.72 + staminaQuality(session) * 0.28)));
       session.enemyHp = Math.max(0, session.enemyHp - damage);
       session.opponentBruise = Math.min(1, (session.opponentBruise || 0) + damage * 0.06 + Number(counter) * 0.04);
       session.recentMoves = [...(session.recentMoves || []), moveId].slice(-5);
-      runtime.lastMoveFeedback = `${MOVES[moveId].label} ${counter ? "countered" : "landed"} for ${damage} damage${recipe.label ? ` · ${recipe.label}` : ""}.`;
+      session.momentum = focus ? 0 : Math.min(100, (session.momentum || 0) + 8 + Number(counter) * 18 + Number(Boolean(recipe.label)) * 12);
+      runtime.lastMoveFeedback = `${MOVES[moveId].label} ${counter ? "countered" : "landed"} for ${damage} damage${recipe.label ? ` · ${recipe.label}` : ""}${focus ? " · FOCUS HIT" : ""}.`;
+      const heavy = focus || counter || damage >= 5;
+      playFightSound(heavy ? "heavy" : "hit");
+      if (counter) playFightSound("counter");
+      showFightFx(heavy ? "heavy" : "hit", counter ? `COUNTER +${damage}` : recipe.label ? `${recipe.label} +${damage}` : `+${damage}`);
       session.counterWindowUntil = 0;
       session.counterFamily = "";
     } else {
       const counterFamily = { straight: "hook", hook: "uppercut", uppercut: "straight" }[prompt.family || "straight"] || "straight";
       session.counterWindowUntil = performance.now() + 760;
       session.counterFamily = counterFamily;
+      session.momentum = Math.min(100, (session.momentum || 0) + 18);
       runtime.lastMoveFeedback = `${MOVES[prompt.expectedMoveId].label} defended clean. Counter with ${counterFamily.toUpperCase()}.`;
+      playFightSound("block");
+      showFightFx("block", `COUNTER: ${counterFamily.toUpperCase()}`);
     }
   } else {
     session.combo = 0;
+    session.momentum = Math.max(0, (session.momentum || 0) - 14);
     if (prompt.type === "offense") {
       session.thrown += 1;
       runtime.lastMoveFeedback = `${MOVES[prompt.expectedMoveId].label} did not land in time.`;
+      playFightSound("miss");
+      showFightFx("block", "MISS");
     } else {
       const damage = prompt.fullDamage || (2 + Number(arenaRank(session.arenaId) >= 2));
       session.playerHp = Math.max(0, session.playerHp - damage);
       session.taken += 1;
       runtime.lastMoveFeedback = `${MOVES[prompt.enemyAttackId || prompt.expectedMoveId].label} landed. You took ${damage} damage.`;
+      playFightSound(damage >= 3 ? "heavy" : "hit");
+      showFightFx("hurt", `-${damage} HP`);
     }
   }
 
@@ -1904,6 +2095,8 @@ function startKnockdown(session, fighter) {
   session.promptQueue = [];
   session.combo = 0;
   runtime.lastMoveFeedback = `${fighter === "opponent" ? "Rival" : "You"} down. Beat the count.`;
+  playFightSound("knockdown");
+  showFightFx("knockdown", fighter === "opponent" ? "KNOCKDOWN" : "DOWN");
 }
 
 function resolveKnockdown(session) {
@@ -1916,7 +2109,7 @@ function resolveKnockdown(session) {
       return;
     }
     session.enemyHp = Math.min(session.enemyMaxHp, 5);
-    session.enemyStamina = Math.min(session.enemyHp, 4);
+    session.enemyStamina = Math.min(session.enemyMaxStamina, 4);
   } else {
     session.enemyRounds += 1;
     if (session.enemyRounds >= session.roundsNeeded) {
@@ -1924,7 +2117,7 @@ function resolveKnockdown(session) {
       return;
     }
     session.playerHp = Math.min(session.playerMaxHp, 5);
-    session.playerStamina = Math.min(session.playerHp, 4);
+    session.playerStamina = Math.min(session.playerMaxStamina, 4);
   }
   session.nextPromptAt = performance.now() + 1200;
   runtime.lastMoveFeedback = `Round continues. Score ${session.playerRounds}-${session.enemyRounds}.`;
@@ -1934,6 +2127,13 @@ function finishFightSession(won) {
   const session = runtime.activeSession;
   const arena = arenaById(session.arenaId);
   const opponent = findOpponent(session.opponentId) || currentArenaOpponent(arena.id);
+  if (session.quickFight) {
+    runtime.statusText = won ? "Exhibition complete: win." : "Exhibition complete: loss.";
+    runtime.lastMoveFeedback = won ? "Quick Fight won. Career record unchanged." : "Quick Fight finished. Career record unchanged.";
+    runtime.activeSession = null;
+    render();
+    return;
+  }
   state.career.cash -= arena.entryFee + arena.upkeep;
   if (won) {
     const peak = session.comboPeak || session.combo || 0;

@@ -218,6 +218,18 @@ select {
   font-size: 2rem;
 }
 
+.menu-card small {
+  color: var(--soft);
+  line-height: 1.45;
+}
+
+.menu-kicker {
+  color: var(--cyan);
+  font-size: 0.78rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
 .hub-footer {
   margin-top: 28px;
   max-width: 540px;
@@ -292,6 +304,10 @@ select {
   grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
+.node-row.single {
+  grid-template-columns: minmax(220px, 0.55fr);
+}
+
 .panel-card,
 .training-card,
 .list-card {
@@ -354,6 +370,21 @@ select {
   min-height: 340px;
   border: 2px solid rgba(52, 223, 246, 0.56);
   background: rgba(0, 0, 0, 0.4);
+  isolation: isolate;
+}
+
+.camera-stage.fx-hit,
+.camera-stage.fx-heavy,
+.camera-stage.fx-hurt {
+  animation: ring-shake 180ms ease-out;
+}
+
+.camera-stage.fx-heavy {
+  animation-duration: 280ms;
+}
+
+.camera-stage.fx-knockdown canvas {
+  animation: knockdown-camera 850ms ease-out;
 }
 
 .camera-stage video,
@@ -375,6 +406,204 @@ select {
   align-items: flex-start;
   padding: 14px;
   pointer-events: none;
+}
+
+.camera-check {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.check-item {
+  padding: 7px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(10, 14, 24, 0.78);
+  color: var(--soft);
+  font-size: 0.82rem;
+}
+
+.check-item.ready {
+  border-color: var(--green);
+  color: var(--white);
+}
+
+.enemy-telegraph {
+  --telegraph-progress: 0;
+  position: absolute;
+  left: 50%;
+  top: 16px;
+  width: min(260px, 38%);
+  transform: translateX(-50%);
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  text-align: center;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.telegraph-ring {
+  width: 112px;
+  aspect-ratio: 1;
+  padding: 5px;
+  border-radius: 50%;
+  background: conic-gradient(var(--red) calc(var(--telegraph-progress) * 1turn), rgba(255, 255, 255, 0.16) 0);
+  transition: transform 120ms ease;
+}
+
+.telegraph-avatar {
+  width: 100%;
+  height: 100%;
+  background: #090f19;
+}
+
+.enemy-telegraph strong,
+.enemy-telegraph small {
+  padding: 4px 8px;
+  background: rgba(7, 11, 20, 0.86);
+}
+
+.enemy-telegraph strong {
+  color: var(--gold);
+  font-family: "Rajdhani", sans-serif;
+  font-size: 1.05rem;
+}
+
+.enemy-telegraph.defense.straight .telegraph-ring {
+  transform: scale(1.08) translateY(7px);
+  box-shadow: 0 0 22px rgba(255, 106, 106, 0.7);
+}
+
+.enemy-telegraph.defense.hook .telegraph-ring {
+  transform: rotate(-12deg) translateX(12px);
+  box-shadow: -16px 0 24px rgba(255, 106, 106, 0.66);
+}
+
+.enemy-telegraph.defense.uppercut .telegraph-ring {
+  transform: translateY(-10px) scale(1.06);
+  box-shadow: 0 16px 24px rgba(255, 106, 106, 0.66);
+}
+
+.enemy-telegraph.offense .telegraph-ring {
+  background: conic-gradient(var(--gold) calc(var(--telegraph-progress) * 1turn), rgba(255, 255, 255, 0.16) 0);
+}
+
+.fight-fx {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.fight-fx.play {
+  animation: fx-fade 420ms ease-out;
+}
+
+.fight-fx.hurt.play {
+  background: radial-gradient(circle, transparent 38%, rgba(220, 38, 38, 0.48));
+}
+
+.fight-fx.knockdown.play {
+  background: rgba(80, 0, 0, 0.32);
+  animation-duration: 900ms;
+}
+
+.impact-burst {
+  position: absolute;
+  width: 130px;
+  aspect-ratio: 1;
+  border: 8px solid var(--white);
+  border-radius: 50%;
+  transform: scale(0.35);
+}
+
+.fight-fx.hit .impact-burst,
+.fight-fx.heavy .impact-burst {
+  animation: impact-ring 380ms ease-out;
+}
+
+.fight-fx.heavy .impact-burst {
+  width: 190px;
+  border-color: var(--gold);
+}
+
+.fight-fx.block .impact-burst {
+  width: 94px;
+  border-color: var(--cyan);
+  border-style: double;
+  animation: block-ring 360ms ease-out;
+}
+
+.fight-fx.hurt .impact-burst,
+.fight-fx.knockdown .impact-burst {
+  display: none;
+}
+
+.impact-text {
+  margin-top: 150px;
+  padding: 7px 13px;
+  color: var(--white);
+  background: rgba(6, 13, 22, 0.88);
+  border: 1px solid currentColor;
+  font-family: "Rajdhani", sans-serif;
+  font-size: 1.5rem;
+  text-shadow: 0 2px 12px #000;
+}
+
+.fight-fx.heavy .impact-text,
+.fight-fx.knockdown .impact-text {
+  color: var(--gold);
+  font-size: 2rem;
+}
+
+.fight-fx.block .impact-text {
+  color: var(--cyan);
+}
+
+.fight-fx.hurt .impact-text {
+  color: var(--red);
+}
+
+@keyframes ring-shake {
+  0%, 100% { transform: translate(0); }
+  30% { transform: translate(-7px, 2px); }
+  60% { transform: translate(6px, -2px); }
+}
+
+@keyframes knockdown-camera {
+  0% { transform: rotate(0) scale(1); filter: none; }
+  45% { transform: rotate(2deg) scale(1.04); filter: saturate(0.5); }
+  100% { transform: rotate(0) scale(1); filter: none; }
+}
+
+@keyframes fx-fade {
+  0% { opacity: 0; }
+  18% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes impact-ring {
+  from { opacity: 1; transform: scale(0.25); }
+  to { opacity: 0; transform: scale(1.8); }
+}
+
+@keyframes block-ring {
+  from { opacity: 1; transform: scale(0.55) rotate(0); }
+  to { opacity: 0; transform: scale(1.45) rotate(28deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .camera-stage,
+  .camera-stage canvas,
+  .fight-fx,
+  .impact-burst,
+  .telegraph-ring {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
 }
 
 .badge {
@@ -410,6 +639,29 @@ select {
 
 .camera-hud-row strong {
   font-size: 1.22rem;
+}
+
+.session-stats {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.stat-card {
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(13, 18, 31, 0.62);
+}
+
+.stat-card .eyebrow {
+  margin-bottom: 4px;
+  font-size: 0.68rem;
+}
+
+.stat-card strong {
+  font-family: "Rajdhani", sans-serif;
+  font-size: 1.5rem;
 }
 
 .combo-hint-strip {
@@ -646,6 +898,10 @@ input[type="range"] {
   .crop-layout {
     grid-template-columns: 1fr;
   }
+
+  .session-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 760px) {
@@ -662,6 +918,19 @@ input[type="range"] {
   .hud-strip,
   .split {
     grid-template-columns: 1fr;
+  }
+
+  .session-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .enemy-telegraph {
+    top: 56px;
+    width: 54%;
+  }
+
+  .telegraph-ring {
+    width: 86px;
   }
 
   .scene-topbar,
